@@ -1,0 +1,75 @@
+pack: example-manco
+version: 2026.10.0
+
+scenarios:
+  - name: manco captured late, price rose, manco pays the fund
+    given:
+      - price: { class: EXB-A, date: 2026-10-01, cpu: 1 000.00 }
+      - price: { class: EXB-A, date: 2026-10-05, cpu: 1 050.00 }
+      - day_closed: 2026-10-01
+      - cash_matched: { account: ACC-1, fund: EXB, amount: R100 000 }
+      - evidence: { email_received: "2026-10-01 09:12" }
+    when:
+      - backdate_investment:
+          account: ACC-1
+          class: EXB-A
+          to: 2026-10-01
+          reason: manco_error
+          maker: ops_clerk_1
+          approvals: [ops_manager_1, finance_manager_1]
+    then:
+      - units_issued: 10 000.0000
+      - fund_receives: R105 000.00
+      - delta: R5 000.00
+      - postings:
+          - { account: "MANCO_ERROR_ACCOUNT",        debit:  R5 000.00 }
+          - { account: "SUBS_PAYABLE_TO_FUND:EXB",   credit: R105 000.00 }
+      - backdating_register_has: { reason: manco_error, owner: MANCO_ERROR_ACCOUNT }
+
+  - name: intermediary late without acknowledgement is refused
+    given:
+      - price: { class: EXB-A, date: 2026-10-01, cpu: 1 000.00 }
+      - day_closed: 2026-10-01
+      - cash_matched: { account: ACC-2, fund: EXB, amount: R50 000 }
+    when:
+      - backdate_investment:
+          account: ACC-2
+          class: EXB-A
+          to: 2026-10-01
+          reason: sla_intermediary
+          maker: ops_clerk_1
+          approvals: [head_of_ops_1, finance_manager_1]
+    then:
+      - error: intermediary_acknowledgement_required
+
+  - name: investor late is not backdated
+    when:
+      - backdate_investment: { account: ACC-3, class: EXB-A, to: 2026-10-01, reason: investor_late }
+    then:
+      - error: reason_not_allowed
+
+  - name: maker cannot approve
+    when:
+      - backdate_investment:
+          account: ACC-4
+          class: EXB-A
+          to: 2026-10-01
+          reason: manco_error
+          maker: ops_clerk_1
+          approvals: [ops_clerk_1, finance_manager_1]
+    then:
+      - error: maker_cannot_approve
+
+  - name: unpaid debit order after units, price fell, manco bears the loss
+    given:
+      - price: { class: EXB-A, date: 2026-10-01, cpu: 1 000.00 }
+      - price: { class: EXB-A, date: 2026-10-06, cpu: 980.00 }
+      - exposure_funded: { account: ACC-5, fund: EXB, amount: R1 000, class: EXB-A, dealing_date: 2026-10-01 }
+    when:
+      - collection_unpaid: { account: ACC-5, on: 2026-10-06 }
+    then:
+      - units_cancelled: 100.0000
+      - fund_returns: R980.00
+      - postings:
+          - { account: "MANCO_ERROR_ACCOUNT",       debit:  R20.00 }
+          - { account: "SETTLEMENT_EXPOSURE:EXB",   credit: R1 000.00 }

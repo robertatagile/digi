@@ -1,0 +1,75 @@
+pack: example-manco
+version: 2026.10.0
+
+cash:
+  units_on:
+    eft: cleared_funds
+    instant_payment: receipt
+    debit_order: collection_day
+    finswitch: settlement_confirmation
+    source: { doc: "Operations manual v7", section: "5.2" }
+  settlement_exposure_limit:
+    per_fund: R2 000 000
+    per_tenant: R5 000 000
+    source: { doc: "Operations manual v7", section: "5.3" }
+  unallocated_cash_sla: 2 business days
+  interest_on_trust_cash:
+    to: fund
+    source: { doc: "Main Deed, Example Collective Investment Scheme (2019)", section: "9.4" }
+
+backdating:
+  max_age_days: 30
+  approvals_required: 2            # kernel minimum is 2; the pack may only raise it
+  reasons:
+    manco_error:
+      owner: MANCO_ERROR_ACCOUNT
+      approvals: [ops_manager, finance_manager]
+    system_outage:
+      owner: MANCO_ERROR_ACCOUNT
+      approvals: [ops_manager, finance_manager]
+    sla_intermediary:
+      owner: INTERMEDIARY_ACCOUNT
+      approvals: [head_of_ops, finance_manager]
+      requires: intermediary_acknowledgement
+    investor_late:
+      allowed: false
+    unpaid_collection:
+      owner: MANCO_ERROR_ACCOUNT
+      approvals: []                 # automatic reversal, reported daily
+  fund_absorbs:
+    allowed: false
+  register:
+    to: [finance_manager]
+    frequency: daily
+    trustee_copy: monthly
+  source: { doc: "Operations manual v7", section: "8" }
+
+pricing_errors:
+  materiality: 0.5%
+  above_materiality:
+    investors: reprice_affected_deals
+    fund: compensate_from MANCO_ERROR_ACCOUNT
+  below_materiality:
+    investors: no_correction
+    fund: compensate_from MANCO_ERROR_ACCOUNT
+  committee: pricing_committee
+  trustee_notice: within 1 business day
+  source: { doc: "Operations manual v7", section: "9" }
+
+approvals:
+  payments:
+    tiers:
+      - { up_to: R250 000,   roles: [payments_checker] }
+      - { up_to: R1 000 000, roles: [payments_checker, ops_manager] }
+      - { above: R1 000 000, roles: [payments_checker, ops_manager, finance_manager] }
+    source: { doc: "Operations manual v7", section: "6.1" }
+  bank_details_change:
+    roles: [ops_verifier]
+    cooling_off_days: 30
+    payment_in_cooling_off_extra_role: ops_manager
+    source: { doc: "Operations manual v7", section: "6.4" }
+
+communications:
+  confirmation: { within: 1 business day, channels: [email, portal] }
+  statement: { frequency: quarterly }
+  source: { doc: "Operations manual v7", section: "10" }

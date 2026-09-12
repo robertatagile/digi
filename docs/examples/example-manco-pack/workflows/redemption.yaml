@@ -1,0 +1,50 @@
+workflow: redemption
+pack: example-manco
+version: 2026.10.0
+states: [captured, held, validated, ring_fenced, priced, approved, paid, confirmed, rejected]
+transitions:
+  - from: captured
+    to: validated
+    guard: >
+      kernel.fica_current
+      and kernel.beneficiary_verified
+      and pack.bank_details_stable(days: 30)
+      and kernel.available_units >= instruction.units
+  - from: captured
+    to: held
+    when: not pack.bank_details_stable(days: 30)
+    task: { name: verify_bank_details_by_call_back, role: ops_verifier, sla: 1 business day }
+  - from: held
+    to: validated
+    guard: task.verify_bank_details_by_call_back.done
+  - from: captured
+    to: rejected
+    when: kernel.available_units < instruction.units
+    message: insufficient_units
+  - from: validated
+    to: ring_fenced
+    when: pack.daily_redemptions(fund) > pack.ring_fencing.threshold
+    approvals: { roles: [head_of_ops] }
+    task: { name: notify_trustee, role: compliance, sla: same day }
+  - from: validated
+    to: priced
+    on: kernel.PricePublished
+  - from: ring_fenced
+    to: priced
+    on: kernel.PricePublished
+    note: partial fill per the deferral decision
+  - from: priced
+    to: approved
+    approvals: pack.approvals.payments.tiers
+    extra_role_when: kernel.in_cooling_off -> ops_manager
+  - from: approved
+    to: paid
+    on: kernel.PaymentConfirmed
+  - from: approved
+    to: priced
+    on: kernel.PaymentReturned
+    task: { name: resolve_returned_payment, role: payments, sla: 1 business day }
+  - from: paid
+    to: confirmed
+    task: { name: send_confirmation, role: system, sla: 1 business day }
+source: { doc: "Operations manual v7", section: "6" }

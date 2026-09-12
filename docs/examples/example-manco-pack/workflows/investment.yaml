@@ -1,0 +1,34 @@
+workflow: investment
+pack: example-manco
+version: 2026.10.0
+states: [captured, held, in_good_order, funded, priced, confirmed, rejected]
+transitions:
+  - from: captured
+    to: in_good_order
+    guard: kernel.fica_current and pack.documents_complete and pack.minimums_met
+  - from: captured
+    to: held
+    when: not (kernel.fica_current and pack.documents_complete)
+    task: { name: request_outstanding_documents, role: client_services, sla: 5 business days }
+  - from: held
+    to: in_good_order
+    guard: kernel.fica_current and pack.documents_complete
+    note: dealing date is the in-good-order date, never the capture date
+  - from: held
+    to: rejected
+    when: age > 30 business days
+    task: { name: refund_unallocated_cash, role: cash_team }
+  - from: in_good_order
+    to: funded
+    on: kernel.CashMatched
+  - from: in_good_order
+    to: funded
+    on: kernel.ExposureFunded
+    guard: pack.units_on(channel) != cleared_funds
+  - from: funded
+    to: priced
+    on: kernel.PricePublished
+  - from: priced
+    to: confirmed
+    task: { name: send_confirmation, role: system, sla: 1 business day }
+source: { doc: "Operations manual v7", section: "4" }

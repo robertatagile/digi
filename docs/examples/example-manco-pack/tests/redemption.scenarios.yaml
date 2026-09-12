@@ -1,0 +1,45 @@
+pack: example-manco
+version: 2026.10.0
+
+scenarios:
+  - name: redemption over one million needs three approvers
+    given:
+      - holding: { account: ACC-1, class: EXB-A, units: 100 000 }
+      - price:   { class: EXB-A, date: 2026-10-05, cpu: 1 500.00 }
+    when:
+      - redeem: { account: ACC-1, class: EXB-A, units: 80 000, received: "2026-10-05 10:00" }
+    then:
+      - dealing_date: 2026-10-05
+      - approvals_required: [payments_checker, ops_manager, finance_manager]
+      - postings:
+          - { account: "REDEMPTIONS_DUE_FROM_FUND:EXB", debit:  R1 200 000.00 }
+          - { account: "REDEMPTIONS_PAYABLE:EXB",       credit: R1 200 000.00 }
+          - { account: "HOLDING_LOCKED:ACC-1:EXB-A",    debit_units:  80 000.0000 }
+          - { account: "UNITS_IN_ISSUE:EXB-A",          credit_units: 80 000.0000 }
+
+  - name: bank details changed twelve days ago puts the redemption on hold
+    given:
+      - holding: { account: ACC-2, class: EXB-A, units: 1 000 }
+      - bank_details_changed: { account: ACC-2, on: 2026-09-23 }
+    when:
+      - redeem: { account: ACC-2, class: EXB-A, units: 500, received: "2026-10-05 09:00" }
+    then:
+      - state: held
+      - task: verify_bank_details_by_call_back
+
+  - name: instruction after cut-off deals next day
+    given:
+      - holding: { account: ACC-3, class: EXB-A, units: 1 000 }
+    when:
+      - redeem: { account: ACC-3, class: EXB-A, units: 100, received: "2026-10-05 14:01" }
+    then:
+      - dealing_date: 2026-10-06
+
+  - name: more units than available is rejected
+    given:
+      - holding: { account: ACC-4, class: EXB-A, units: 100 }
+    when:
+      - redeem: { account: ACC-4, class: EXB-A, units: 150, received: "2026-10-05 09:00" }
+    then:
+      - state: rejected
+      - message: insufficient_units

@@ -1,0 +1,91 @@
+pack: example-manco
+tenant_type: manco
+version: 2026.10.0
+effective_from: 2026-10-01
+kernel_min_version: 1.0
+generated:
+  from:
+    - "Main Deed, Example Collective Investment Scheme (2019)"
+    - "Supplemental Deed, Example Balanced Fund (2021)"
+    - "MDD Example Balanced Fund A, June 2026"
+    - "Fee schedule, adviser classes, 2026"
+    - "Operations manual v7, dealing desk"
+    - "Legacy configuration export, 2026-08-30"
+  reviewed_by: []            # filled at sign-off
+  open_questions: open-questions.md
+
+calendars:
+  JSE:
+    source: { doc: "Operations manual v7", section: "2.1" }
+    holidays: jse-public-holidays
+  bank:
+    source: { doc: "Operations manual v7", section: "2.1" }
+    holidays: za-bank-holidays
+
+funds:
+  - id: EXB
+    name: Example Balanced Fund
+    scheme: Example Collective Investment Scheme
+    fsca_registration: "EX-0001"
+    source: { doc: "Supplemental Deed, Example Balanced Fund (2021)", section: "1" }
+    classes:
+      - id: EXB-A
+        name: Example Balanced Fund A
+        isin: ZAE000000001
+        pricing:
+          calendar: JSE
+          point: "15:00"
+          publish_by: "T+1 08:00"
+          decimals: { price_cpu: 2, units: 4 }
+          rounding: { units: half_up, money: half_up }
+          source: { doc: "Supplemental Deed, Example Balanced Fund (2021)", section: "4.2" }
+        dealing:
+          cutoff: "14:00"
+          channels: [finswitch, portal, email]
+          settlement: { subscription: T+0, redemption: T+2 }
+          source: { doc: "Operations manual v7", section: "3.4" }
+        minimums:
+          lump_sum: R10 000
+          additional: R1 000
+          debit_order: R500
+          remaining_balance: R5 000
+          source: { doc: "MDD Example Balanced Fund A, June 2026", section: "Investment minimums" }
+        fees:
+          initial:
+            max: 3.45%
+            negotiable_by: adviser
+            vat: included
+            source: { doc: "Fee schedule, adviser classes, 2026", section: "A" }
+          annual_management:
+            rate: 1.15%
+            note: accrues in the NAV, informational for the register
+            source: { doc: "MDD Example Balanced Fund A, June 2026", section: "Fees" }
+          adviser_ongoing:
+            max: 1.15%
+            method: unit_cancellation
+            frequency: monthly
+            vat: added
+            source: { doc: "Fee schedule, adviser classes, 2026", section: "B" }
+        distributions:
+          frequency: quarterly
+          months: [3, 6, 9, 12]
+          default_option: reinvest
+          reinvest_price: ex_distribution
+          source: { doc: "Supplemental Deed, Example Balanced Fund (2021)", section: "7" }
+        ring_fencing:
+          threshold: 5% of fund NAV per dealing day
+          approver: head_of_ops
+          trustee_notice: same_day
+          source: { doc: "Main Deed, Example Collective Investment Scheme (2019)", section: "12.3" }
+
+      - id: EXB-B
+        name: Example Balanced Fund B
+        isin: ZAE000000002
+        inherits: EXB-A
+        fees:
+          initial: { max: 0%, source: { doc: "Fee schedule, adviser classes, 2026", section: "C" } }
+          adviser_ongoing: { max: 0.50%, method: unit_cancellation, frequency: monthly, vat: added,
+                             source: { doc: "Fee schedule, adviser classes, 2026", section: "C" } }
+        eligibility:
+          rule: account.channel == "lisp"
+          assumption: { text: "B class is LISP only per legacy configuration; deed is silent", owner: head_of_ops }
