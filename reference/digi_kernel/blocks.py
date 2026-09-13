@@ -16,7 +16,7 @@ from typing import Iterable, Optional
 from .controls import Approval, ControlError, DayClose, LossPolicy, require_approvals
 from .ledger import Journal, Ledger, Posting, cr, dr
 from .prices import Price, PriceBook
-from .register import Register, holding_account, in_issue_account, locked_account
+from .register import Register, holding_account, in_issue_account, locked_account, nominee_bulk_account, rounding_units_account
 from .valuation import AccountValuation, cpu_to_amount, value_account
 
 ZERO = Decimal("0")
@@ -126,6 +126,22 @@ class Deal:
 
 
 @dataclass
+class BulkInstruction:
+    """Instructions for an external instrument, aggregated per class and dealing day."""
+
+    id: str
+    class_id: str
+    fund: str
+    dealing_date: date
+    instruction_ids: tuple[str, ...]
+    amount: Decimal
+    excluded: tuple[tuple[str, str], ...] = ()  # (instruction id, reason)
+    status: str = "submitted"  # submitted, allocated
+    confirmation_ref: Optional[str] = None
+    journal_id: Optional[str] = None
+
+
+@dataclass
 class Payable:
     id: str
     fund: str
@@ -186,6 +202,8 @@ class Kernel:
         self.backdating_register: list[BackdatingRecord] = []
         self.corrections: list[CorrectionRecord] = []
         self.kyc_status: dict[str, str] = {}  # account -> "verified" | "expired" | "pending"
+        self.instruments: dict[str, str] = {}  # class id -> "own" | "external"
+        self.bulks: dict[str, BulkInstruction] = {}
         self._seq = 0
 
     # ------------------------------------------------------------------ helpers
@@ -233,6 +251,15 @@ class Kernel:
         if price is None:
             raise BlockError(f"no official price known for {class_id} at {at}")
         return price
+
+    def register_instrument(self, *, class_id: str, issuer: str) -> None:
+        """Who issues the instrument. An attribute, not a system boundary."""
+        if issuer not in ("own", "external"):
+            raise BlockError(f"issuer must be own or external, not {issuer!r}")
+        self.instruments[class_id] = issuer
+
+    def issuer_of(self, class_id: str) -> str:
+        return self.instruments.get(class_id, "own")
 
     def set_kyc_status(self, *, account: str, status: str, actor: str, at: datetime) -> None:
         """FICA customer due diligence status. A kernel flag with controlled transitions."""
@@ -394,6 +421,8 @@ class Kernel:
             raise ControlError(
                 f"{ins.dealing_date} is closed; use backdate_investment with a reason and a loss owner (I11)"
             )
+        if self.issuer_of(ins.class_id) == "external":
+            raise BlockError(f"{ins.class_id} is issued by another manco; deal in bulk with submit_bulk and confirm_bulk")
         kyc_tag = self._require_kyc(ins.account, "dealing")
         price = self.prices.official_at(ins.class_id, ins.dealing_date, knowledge_as_at=at)
         if price is None:
@@ -421,6 +450,101 @@ class Kernel:
             units=units, investor_amount=ins.funded_amount, fund_amount=net, fee=fee, price=price,
             effective_date=ins.dealing_date, journal_id=journal.id, on_exposure=ins.on_exposure,
         )
+
+    # ------------------------------------------------ bulk dealing and allocation
+
+    def submit_bulk(self, *, class_id: str, dealing_date: date, at: datetime, actor: str) -> BulkInstruction:
+        """Aggregate matched investments in an external instrument for one dealing day."""
+        if self.issuer_of(class_id) != "external":
+            raise BlockError(f"{class_id} is issued by this tenant; it deals at its own pricing point")
+        if self.day_close.is_closed(dealing_date):
+            raise ControlError(f"{dealing_date} is closed (I11)")
+        included: list[Instruction] = []
+        excluded: list[tuple[str, str]] = []
+        for ins in self.instructions.values():
+            if ins.class_id != class_id or ins.dealing_date != dealing_date or ins.kind != "invest" or ins.status != "matched":
+                continue
+            try:
+                self._require_kyc(ins.account, "dealing")
+            except ControlError as exc:  # the account stays out of the bulk and stays unpriced; day close sees it
+                excluded.append((ins.id, str(exc)))
+                continue
+            included.append(ins)
+        if not included:
+            raise BlockError(f"nothing to submit for {class_id} on {dealing_date}")
+        bulk = BulkInstruction(
+            id=self._next_id("B"), class_id=class_id, fund=included[0].fund, dealing_date=dealing_date,
+            instruction_ids=tuple(i.id for i in included), amount=sum((i.funded_amount for i in included), ZERO),
+            excluded=tuple(excluded),
+        )
+        for ins in included:
+            ins.status = "in_bulk"
+        self.bulks[bulk.id] = bulk
+        return bulk
+
+    def confirm_bulk(
+        self, *, bulk_id: str, cpu: Decimal, units_confirmed: Decimal, confirmation_ref: str, at: datetime, actor: str
+    ) -> tuple[Price, list[Deal]]:
+        """The issuing manco confirms price and units. The price becomes a fact. Investors are allocated."""
+        bulk = self.bulks[bulk_id]
+        if bulk.status != "submitted":
+            raise BlockError(f"bulk {bulk.id} is already {bulk.status}")
+        if not confirmation_ref:
+            raise ControlError("a confirmation reference is the second pair of eyes on an external price")
+        cpu = Decimal(cpu)
+        units_confirmed = Decimal(units_confirmed)
+        existing = self.prices.official_at(bulk.class_id, bulk.dealing_date, knowledge_as_at=at)
+        if existing is None:
+            price = self.publish_price(
+                class_id=bulk.class_id, pricing_date=bulk.dealing_date, cpu=cpu, at=at,
+                signed_by=(actor, f"confirmation:{confirmation_ref}"),
+            )
+        elif existing.cpu != cpu:
+            raise BlockError(
+                f"confirmation price {cpu} differs from the published {existing.cpu} for {bulk.class_id} on "
+                f"{bulk.dealing_date}; prices are never overwritten, raise a correction (I10)"
+            )
+        else:
+            price = existing
+        instructions = [self.instructions[i] for i in bulk.instruction_ids]
+        allocations = [(ins, to_units(ins.funded_amount, price.cpu)) for ins in instructions]
+        allocated = sum((u for _, u in allocations), ZERO)
+        diff = units_confirmed - allocated
+        if abs(diff) >= Decimal("1"):
+            raise ControlError(
+                f"allocation break on {bulk.class_id}: the manco confirmed {units_confirmed} units, allocation gives "
+                f"{allocated}; nothing posts until a human resolves it (C6)"
+            )
+        postings = [
+            dr(awaiting_pricing(bulk.fund), "money", ZAR, bulk.amount),
+            cr(payable_to_fund(bulk.fund), "money", ZAR, bulk.amount),
+            dr(nominee_bulk_account(bulk.class_id), "units", bulk.class_id, units_confirmed),
+        ]
+        for ins, units in allocations:
+            postings.append(cr(holding_account(ins.account, bulk.class_id), "units", bulk.class_id, units))
+        if diff > 0:
+            postings.append(cr(rounding_units_account(bulk.class_id), "units", bulk.class_id, diff))
+        elif diff < 0:
+            postings.append(dr(rounding_units_account(bulk.class_id), "units", bulk.class_id, -diff))
+        journal = self._journal(
+            effective_date=bulk.dealing_date, at=at, actor=actor, command="ConfirmBulk",
+            postings=postings,
+            evidence=[f"bulk:{bulk.id}", f"confirmation:{confirmation_ref}", price.ref, f"obligation:{FICA_CDD}",
+                      f"obligation:{CISCA_FORWARD_PRICING}"],
+        )
+        self.register.check(bulk.class_id)
+        bulk.status = "allocated"
+        bulk.confirmation_ref = confirmation_ref
+        bulk.journal_id = journal.id
+        deals: list[Deal] = []
+        for ins, units in allocations:
+            ins.status = "priced"
+            deals.append(self._new_deal(
+                instruction_id=ins.id, account=ins.account, class_id=ins.class_id, fund=ins.fund, kind="invest",
+                units=units, investor_amount=ins.funded_amount, fund_amount=ins.funded_amount, fee=ZERO, price=price,
+                effective_date=bulk.dealing_date, journal_id=journal.id,
+            ))
+        return price, deals
 
     # --------------------------------------------------------------- redemption
 
@@ -765,7 +889,7 @@ class Kernel:
         """Gates from docs/04. Passing them locks the date. There is no reopen."""
         problems: list[str] = []
         for ins in self.instructions.values():
-            if ins.dealing_date == dealing_date and ins.status in ("matched", "locked"):
+            if ins.dealing_date == dealing_date and ins.status in ("matched", "locked", "in_bulk"):
                 problems.append(f"instruction {ins.id} is unpriced")
         for line in self.bank_lines.values():
             if not line.matched and line.at.date() <= dealing_date:

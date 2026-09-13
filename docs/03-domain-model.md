@@ -17,10 +17,9 @@
 |--------|-------|
 | **Scheme** | A collective investment scheme under a deed. |
 | **Fund (portfolio)** | A portfolio in a scheme. |
-| **Unit class** | The priced instrument. A, B, C classes with different fees. Has an ISIN. |
-| **External class** | LISP tenants only. A class priced by another manco. |
+| **Instrument (unit class)** | The priced thing an account holds. A, B, C classes with different fees. Has an ISIN. Has an **issuer**: own (this tenant's fund) or external (another manco's fund). |
 | **Model portfolio** | A recipe of classes with target weights. LISP only. |
-| **Account** | An investor's holding container. Has a **product type**: discretionary, TFSA, RA, preservation, living annuity, endowment. Product rules live in the pack. |
+| **Account** | An investor's holding container for **any number of instruments**, own or external. Has a **product type**: discretionary, TFSA, RA, preservation, living annuity, endowment. Product rules live in the pack. |
 | **Component** | A sub-position inside an account, for example the two-pot components. Pack defined. Kernel enforces separate unit balances. |
 
 ### Instructions and deals
@@ -29,6 +28,7 @@
 |--------|-------|
 | **Instruction** | An intent from a party: invest, redeem, switch, transfer, change option, regular instruction. Immutable received-at. Evidence attached. |
 | **Deal** | An execution of an instruction against a class at a pricing point. Units = amount ÷ price, or amount = units × price. |
+| **Bulk instruction** | External instruments only. Instructions aggregated per class and dealing day, sent to the issuing manco, allocated at the confirmed price. |
 | **Pricing point** | Class + dealing date + valuation time. The unit of pricing. |
 | **Price** | Official NAV or indicative, in cents per unit, with a **version** and a published-at time. |
 | **Backdating decision** | Reason, fault party, loss owner account, approvals, computed delta. |
@@ -88,6 +88,21 @@ erDiagram
 
 `HOLDING` is not a table. It is a **derived position**: the fold of unit postings for an account and a class.
 
+## One account, many instruments
+
+An account holds **N positions in N instruments**. The unit trust investor is N = 1. The LISP account is N = 30. No block, query or control depends on N.
+
+What changes with the instrument's **issuer**:
+
+| | Own | External |
+|-|-----|----------|
+| Control total | Units in issue | Nominee bulk confirmed by the manco |
+| Price origin | Own pricing point | The manco's confirmation |
+| Dealing | Priced one by one | Aggregated, then allocated |
+| Reconciliation | Fund accounting | The manco's statement |
+
+Doc 10 covers the general case in full.
+
 ## Kernel invariants
 
 These hold for every tenant, every pack, every day.
@@ -95,7 +110,7 @@ These hold for every tenant, every pack, every day.
 | # | Invariant |
 |---|-----------|
 | **I1** | Every journal balances in money per currency **and** in units per class. |
-| **I2** | Σ investor holdings + box holdings = units in issue, per class, at every knowledge time. |
+| **I2** | Σ holder-side positions = the issuer-side control quantity, per class, at every knowledge time. Units in issue for an own class. The nominee bulk holding for an external class. |
 | **I3** | Units are issued or cancelled only by a deal at a price in a pricing point. |
 | **I4** | Every deal has a cash fact (bank line or settlement) or an explicit **settlement exposure** posting within a limit. |
 | **I5** | Postings are immutable. A correction is a reversal plus a new posting, with a reason. |
@@ -118,8 +133,8 @@ These hold for every tenant, every pack, every day.
 
 Unit accounts follow register practice.
 
-- **Holder accounts** (investor holding, locked holding, box) carry **credit** balances.
-- The **units-in-issue control** carries the matching **debit** balance.
+- **Holder accounts** (investor holding, locked holding, box, allocation rounding) carry **credit** balances.
+- The **control account** carries the matching **debit** balance: `UNITS_IN_ISSUE` for an own class, `NOMINEE_BULK` for an external class.
 - A unit journal balances when both sides move by the same quantity. This is invariant I2 by construction.
 
 ## Glossary

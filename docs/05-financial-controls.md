@@ -99,7 +99,7 @@ Per-user and per-role monetary limits. Velocity limits. Large transaction flags 
 | Register vs fund accounting | Daily | Units in issue per class, per knowledge date | Zero | Dealing |
 | Bank | Daily and intraday | Bank statements vs `BANK:*` accounts | Zero, timing items listed | Cash team |
 | Control account ageing | Daily | Every control account vs its clearing rule | Per register above | Account owner |
-| Nominee bulk (LISP) | Daily | Σ investor holdings vs manco statement per class | Zero | LISP operations |
+| Nominee bulk (external classes) | Daily | Σ investor holdings + rounding vs the issuing manco's statement per class | Zero | Dealing |
 | Price sanity | Per publication | New price vs previous official and latest indicative | Pack tolerance | Pricing |
 | Distribution | Per declaration | Declared total vs Σ entitlements | Rounding only | Operations |
 | Payments | Per batch | Payables vs bank file vs confirmations | Zero | Payments |

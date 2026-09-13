@@ -39,13 +39,14 @@ Configuration becomes a **per-manco codebase you can read**. Generated in days. 
 | P6 | **Generated, not configured** | Manco behaviour is a versioned, tested, provenance-annotated pack. |
 | P7 | **Replayable** | Any balance, NAV or statement can be recomputed as at any point on either time axis. |
 | P8 | **Controls first** | Maker-checker, segregation of duties and reconciliation are built into block boundaries. |
+| P9 | **One fund or a thousand** | An account holds N instruments. The one-fund investor is N = 1. Who issues an instrument is an attribute, never a system boundary. |
 
 ## Scope
 
 **In scope**
 
-- Investor register (transfer agency) for a CIS manco.
-- LISP register with nominee (bulk) holdings across mancos.
+- One register for manco and LISP tenants. An account holds any number of instruments, own or external.
+- Nominee (bulk) holdings across mancos, with bulk dealing and allocation.
 - Cash management and settlement.
 - Distributions, fees, regular instructions, corporate actions.
 - Valuation on last known price, near real time.

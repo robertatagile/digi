@@ -118,7 +118,7 @@ value = 10 000 × 1 500.00 ÷ 100 = R150 000.00
 price basis: official, 2026-09-11, v1, age 1 day
 ```
 
-**LISP account with mixed price dates.** Three funds from three mancos. Prices dated 11, 11 and 10 September. The total is shown with oldest price date 10 September and coverage 66%.
+**Account with mixed price dates.** One own fund and two external funds from two mancos. Prices dated 11, 11 and 10 September. The total is shown with oldest price date 10 September and coverage 66%. A one-fund account gets the same view with one line.
 
 **Adviser fee, 0.50% p.a., monthly in arrears.**
 

@@ -4,6 +4,8 @@ Design repository for a new South African **LISP and unit trust (CIS) administra
 
 **The idea in one line:** a small, hard **kernel** of financial building blocks with fixed controls, plus an **AI‑generated Tenant Pack** per manco or LISP. No configuration matrix.
 
+**One kernel for both.** An account holds any number of instruments. A unit trust investor is the case N = 1. A LISP account is N = 30. Who issues the instrument is an attribute, not a system boundary.
+
 ## Start here
 
 | Read | Why |

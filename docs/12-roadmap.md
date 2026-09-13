@@ -4,16 +4,16 @@
 
 | Phase | Builds | Exit criteria |
 |-------|--------|---------------|
-| **0. Kernel core** | Ledger (bitemporal, money and units), register, prices with versions, valuation, investment and redemption blocks, cash matching, maker-checker, day close | Property tests pass: journals balance, register reconciles, values equal pure recompute. Golden scenarios green. |
-| **1. Full block set** | Switch, transfer, distribution, fees, regular instructions, backdating and reversals, price corrections, corporate actions, payments, reconciliations | Every block has postings, reversal and control accounts under test. Break register live. |
-| **2. Packs** | Pack DSL, validator, sandbox runtime, simulator, generation pipeline, review workspace, release process | One fictional pack generated from documents. Shadow run tooling replays a synthetic history. |
-| **3. Manco pilot** | Pack for one real manco. Adapters: bank, fund accounting, FinSwitch inbound | Shadow run parity with legacy for one quarter. Trustee and auditor walkthrough done. |
-| **4. LISP tenant** | Nominee register, bulk dealing, products, models, fee runs, tax outputs | Pilot LISP shadow run. IT3 outputs match. |
+| **0. Kernel core** | Ledger (bitemporal, money and units), register with own and external issuers, prices with versions and confirmations, valuation, investment and redemption direct and in bulk, allocation, cash matching, maker-checker, day close | Property tests pass: journals balance, register reconciles for both issuers, values equal pure recompute. Golden scenarios green. |
+| **1. Full block set** | Switch, transfer, distribution, fees and fee runs across N instruments, regular instructions, backdating and reversals, price corrections, corporate actions, payments, reconciliations including nominee | Every block has postings, reversal and control accounts under test. Break register live. |
+| **2. Packs and legislation** | Pack DSL, validator, sandbox runtime, simulator, generation pipeline, review workspace, release process, legislation library and obligation register | One fictional pack generated from documents. Shadow run tooling replays a synthetic history. Coverage gate live. |
+| **3. First tenant pilot** | Pack for one real tenant, manco or LISP. Adapters: bank, fund accounting or FinSwitch, SARS | Shadow run parity with legacy for one quarter. Trustee and auditor walkthrough done. Both issuer shapes exercised in the simulator regardless of the pilot's shape. |
+| **4. Products and models** | Product wrappers as pack rules (TFSA, RA, preservation, living annuity, endowment, two-pot), model portfolios and rebalancing, tax directives | Second tenant shadow run. IT3 outputs match. |
 | **5. Migration and scale** | Legacy migration tooling, regulatory packs, performance work, second and third tenants | Onboarding a tenant in weeks, repeatably. |
 
 ## Pilot approach
 
-1. Pick a manco with a few funds and a cooperative operations team.
+1. Pick a tenant with a quarter of clean history and a cooperative operations team. Manco or LISP.
 2. Generate the pack from its documents and legacy configuration export.
 3. Run the **shadow run** for a past quarter. Compare every unit, price, fee and payment.
 4. Review differences with the manco. Fix the pack or record the legacy defect.
@@ -37,7 +37,7 @@ These need a call from the sponsor. Recommendation first.
 
 | Decision | Recommendation | Alternative |
 |----------|----------------|-------------|
-| First pilot: manco or LISP | **Manco.** Simpler register, proves the kernel and packs | LISP first for market reach |
+| First pilot: manco or LISP | **Whichever tenant is ready.** The kernel serves both from day one, so this is a commercial choice, not a design one. A LISP pilot exercises more of the kernel: external prices, bulk dealing, products | A manco pilot proves parity against a simpler legacy register faster |
 | Fund accounting in v1 | **No.** Interface only | Build it, doubles scope |
 | Pack language | **Typed declarative DSL** with a small expression language | A general language in a sandbox. More power, harder to validate |
 | Sandbox technology | **WebAssembly** with capability-based kernel API | Interpreter in the kernel process |

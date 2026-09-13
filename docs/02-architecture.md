@@ -42,10 +42,10 @@ flowchart TB
 | Component | Responsibility | Fixed behaviour |
 |-----------|----------------|-----------------|
 | **Ledger** | Double-entry journal in two dimensions: money per currency, units per class. Bitemporal. Immutable. | Unbalanced journals are rejected. Corrections are reversals plus re-posts. |
-| **Unit register** | Positions per account and class, derived from unit postings. Units in issue per class. | Σ holdings + box = units in issue. Checked on every unit journal. |
-| **Prices** | Price series per class and pricing point. Versions for corrections. Official and indicative kinds. | Published prices are never overwritten. A correction is a new version. |
+| **Unit register** | Positions per account and instrument, derived from unit postings. Any number of instruments per account. Control total per class: units in issue for an own class, nominee bulk for an external class. | Σ holder side = control side. Checked on every unit journal. |
+| **Prices** | Price series per class and pricing point. Versions for corrections. Official and indicative kinds. External confirmations enter as prices. | Published prices are never overwritten. A correction is a new version. |
 | **Valuation** | Pure functions: units × selected price, with provenance. | No value is stored as a fact. |
-| **Building blocks** | Investment, redemption, switch, transfer, distribution, fees, regular instructions, corporate actions, backdating, corrections. | Each block has a fixed contract, fixed postings and fixed control accounts. |
+| **Building blocks** | Investment, redemption, bulk dealing and allocation, switch, transfer, distribution, fees, regular instructions, corporate actions, backdating, corrections. | Each block has a fixed contract, fixed postings and fixed control accounts. |
 | **Cash management** | Bank accounts, statements, matching, payables, payments, settlement, bank reconciliation. | No payment without a payable. No units without a cash fact or an explicit exposure posting. |
 | **Control plane** | Maker-checker, segregation of duties, limits, exceptions, breaks, day close, audit trail. | Maker ≠ checker. Day close blocks on open breaks above tolerance. |
 | **Party and account** | Investors, advisers, nominees, KYC status, bank details, accounts. | Bank detail changes are controlled events. |

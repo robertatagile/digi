@@ -13,7 +13,7 @@ Read in order. Each document stands alone.
 | 07 | [Backdating and corrections](07-backdating-and-corrections.md) | Two time axes. The delta formula. Loss allocation matrix. |
 | 08 | [Cash management](08-cash-management.md) | Money in, money out, settlement, bank reconciliation. |
 | 09 | [Tenant Packs, AI generated](09-tenant-packs-ai-generated.md) | The Pack DSL, the generation pipeline, the gates. |
-| 10 | [LISP layer](10-lisp-layer.md) | Nominee holdings, bulk dealing, products, fees, tax. |
+| 10 | [One kernel for manco and LISP](10-one-kernel-manco-and-lisp.md) | An account holds N instruments. Issuer is an attribute. Bulk dealing, nominee register, products, fees, tax. |
 | 11 | [Regulatory and integration](11-regulatory-and-integration.md) | SA regimes mapped to platform parts. Integration map. |
 | 12 | [Roadmap](12-roadmap.md) | Phases, pilot approach, risks, open decisions. |
 | 13 | [Legislation as a controlled layer](13-legislation-as-a-controlled-layer.md) | FSR Act, COFI, FAIS, CISCA, FICA and more as versioned obligations, bound to controls, managed by the manco. |

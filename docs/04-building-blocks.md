@@ -20,6 +20,7 @@ Every block obeys the same contract. No exceptions.
 | Instruction intake | Received-at, evidence, status machine, in-good-order flag | Channels, document checks, cut-off rules, holds |
 | Investment | Postings, control accounts, pricing at a published price | Minimums, initial fee formula, eligibility, units-on-cleared-funds policy |
 | Redemption | Available units check, cancellation postings, payable creation | Approval tiers, bank detail cooling-off period, ring-fencing thresholds |
+| Bulk dealing and allocation | Aggregation, confirmation as a price fact, allocation maths, rounding account, break on mismatch | Cut-offs per manco, gross or net, channel mappings |
 | Switch | Atomic two legs through switch clearing | Which classes may switch, same-day or lagged legs |
 | Transfer | Units-only journal, tax lots carried | Which transfers are allowed per product |
 | Distribution | Record-date derivation, entitlement maths, rounding account | Frequency, default option, reinvestment price rule |
@@ -55,7 +56,9 @@ Money accounts are per fund and currency. Unit accounts are per class.
 
 | Units | Meaning |
 |-------|---------|
-| `UNITS_IN_ISSUE:<class>` | Control. Debit balance. |
+| `UNITS_IN_ISSUE:<class>` | Control for an own class. Debit balance. |
+| `NOMINEE_BULK:<class>` | Control for an external class. The bulk holding the issuing manco confirms. Debit balance. |
+| `ROUNDING_UNITS:<class>` | Allocation rounding on external classes. Holder side. Tolerance below one unit. |
 | `HOLDING:<account>:<class>` | Investor position. Credit balance. |
 | `HOLDING_LOCKED:<account>:<class>` | Reserved for a pending redemption or fee. Still held. |
 | `BOX:<class>` | Manco-owned units. |
@@ -115,6 +118,19 @@ Steps for **U** units at price **P**, amount **M = U × P**, tax withheld **T**:
 
 Events: `UnitsLocked`, `DealPriced`, `UnitsCancelled`, `PayableCreated`, `PaymentInstructed`, `PaymentConfirmed`, `PaymentReturned`.
 
+### Bulk dealing and allocation
+
+**Purpose.** Deal in an instrument another manco issues.
+
+- Instructions for an external class aggregate per class and dealing day into a **bulk instruction**. Cash for each stays in `SUBS_AWAITING_PRICING`.
+- The FICA gate applies per account at aggregation. An account that fails stays out of the bulk and stays unpriced. Day close sees it.
+- The manco's **confirmation** brings the price and the units. The price is published once for the class and dealing day, signed by the operator and the confirmation reference. A different price later is a correction.
+- Allocation: U_i = amount_i ÷ P for each investor. Σ U_i against the confirmed units. The difference posts to `ROUNDING_UNITS`. A difference of a whole unit or more is a break. Nothing posts.
+- One journal: Dr `SUBS_AWAITING_PRICING` A · Cr `SUBS_PAYABLE_TO_FUND` A · Dr `NOMINEE_BULK` U · Cr each `HOLDING` U_i · rounding.
+- Redemptions mirror this through `HOLDING_LOCKED`, `REDEMPTIONS_DUE_FROM_FUND` and `REDEMPTIONS_PAYABLE`.
+
+Available to any tenant. A manco with a fund of funds or its own platform uses the same block.
+
 ### Switch
 
 **Purpose.** Redeem one class and invest in another, atomically.
@@ -123,6 +139,7 @@ Events: `UnitsLocked`, `DealPriced`, `UnitsCancelled`, `PayableCreated`, `Paymen
 - In leg posts like an investment drawn from `SWITCH_CLEARING`.
 - Both legs commit together or neither does.
 - Different pricing points (15:00 local, 17:00 foreign, T+1 feeder) are supported. Cash rests in switch clearing until the in-leg price exists.
+- A leg on an external instrument goes through bulk dealing. A switch between an own fund and another manco's fund is still one atomic switch.
 - Net cash between funds settles through the custodian sweep.
 
 ### Transfer and re-registration
