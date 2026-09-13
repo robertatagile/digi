@@ -123,6 +123,21 @@ Append-only events. Every command records the actor, the evidence, and the **pac
 
 A pack may lower a limit, add an approver, shorten a clearing time, add a gate. A pack can never raise a kernel limit, remove an approver, extend a clearing time or skip a gate. The pack validator rejects any attempt.
 
+### C11. Regulatory coverage
+
+Every kernel control names the obligations it serves. Every applicable in-force obligation is bound to a kernel control, a pack rule or an attested manual procedure. A pack cannot be released otherwise. A command records the obligations it evaluated. Doc 13.
+
+| Control | Serves, among others |
+|---------|----------------------|
+| C1 double entry | CISCA trust money and unit register duties |
+| C2 bitemporal ledger | FSR Act and FICA record keeping, CISCA reporting |
+| C3 immutability | FICA and FAIS record keeping, POPIA integrity |
+| C4 maker-checker | FSR Act governance, FICA risk management and compliance programme |
+| C5 limits | FICA threshold reporting, Regulation 28, exchange control |
+| C6 reconciliations | CISCA trustee reporting, FSR Act returns |
+| C8 day close | CISCA daily pricing and dealing duties |
+| C9 audit and provenance | FSR Act information requests, COFI conduct evidence |
+
 ## Control matrix
 
 | Boundary | C1 | C2 | C3 | C4 | C5 | C6 | C8 |

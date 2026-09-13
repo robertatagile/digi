@@ -1,0 +1,226 @@
+# Tenant obligation register — manco managed.
+# Library obligations come from the platform. This file says how Example Manco meets each one.
+# A pack cannot be released while an applicable in-force obligation has no binding here.
+pack: example-manco
+version: 2026.10.0
+library_version: za-2026.09
+tenant_type: manco
+register_owner: head_of_compliance
+approvals: { maker: compliance_officer, checkers: [head_of_compliance] }
+
+bindings:
+  # ---------------------------------------------------------------- FSR Act
+  - obligation: FSR-COMPLAINTS-HANDLING
+    legislation: FSR Act (Financial Sector Regulation Act, 2017), conduct standards on complaints
+    type: timing
+    owner: head_of_compliance
+    implementations:
+      - pack: workflows/complaints.yaml            # acknowledgement and resolution SLAs
+      - kernel: breaks.sla_breach                  # a missed SLA is a break with an owner
+    evidence: [complaint_events, sla_breach_breaks]
+    source: { doc: "FSCA conduct standard on complaints management", section: "n/a" }
+
+  - obligation: FSR-CONDUCT-RETURNS
+    type: report
+    owner: head_of_compliance
+    implementations:
+      - calendar: regulatory/compliance-calendar.yaml#fsca-conduct-return
+      - kernel: queries.regulatory_trail
+    evidence: [submitted_return, acknowledgement]
+
+  # ------------------------------------------------------------------- COFI
+  - obligation: COFI-TCF-OUTCOMES
+    status: pending                                # bound now, activates on commencement
+    type: attestation
+    owner: head_of_compliance
+    implementations:
+      - manual: "Quarterly TCF outcomes review by the conduct committee"
+    attestation: { frequency: quarterly, role: head_of_compliance, approver: chief_executive }
+
+  - obligation: COFI-PRODUCT-GOVERNANCE
+    status: pending
+    type: gate
+    owner: product_owner
+    implementations:
+      - pack: workflows/product-change.yaml        # new class or fee change needs a product review
+    serves_note: "Also satisfies the deed's supplemental deed amendment procedure"
+
+  - obligation: COFI-DISCLOSURE
+    status: pending
+    type: disclosure
+    owner: head_of_compliance
+    implementations:
+      - pack: templates/confirmation.html          # serves: [COFI-DISCLOSURE, FAIS-GCOC-DISCLOSURE]
+      - pack: templates/statement.html
+
+  # ------------------------------------------------------------------- FAIS
+  - obligation: FAIS-ADVISER-LICENCE
+    legislation: FAIS (Financial Advisory and Intermediary Services Act, 2002), s7 and s13
+    type: gate
+    owner: key_individual
+    implementations:
+      - kernel: gates.adviser_licence_on_fee_release   # no adviser fee paid to a lapsed or debarred FSP
+      - pack: workflows/adviser-onboarding.yaml         # FSP number and representative check
+    evidence: [fsp_register_check, fee_release_events]
+
+  - obligation: FAIS-GCOC-DISCLOSURE
+    legislation: FAIS General Code of Conduct
+    type: disclosure
+    owner: key_individual
+    implementations:
+      - pack: templates/confirmation.html
+      - pack: templates/fee-disclosure.html
+
+  - obligation: FAIS-RECORDS
+    legislation: FAIS s18
+    type: record
+    owner: key_individual
+    implementations:
+      - kernel: ledger.immutable_events
+      - pack: policies.yaml#retention               # five years after termination
+
+  # ------------------------------------------------------------------ CISCA
+  - obligation: CISCA-FORWARD-PRICING
+    type: gate
+    owner: head_of_ops
+    implementations:
+      - kernel: invariants.I3                       # units only at a published price for the pricing point
+      - kernel: instruction.dealing_date_from_received_at
+      - pack: funds.EXB-A.dealing.cutoff
+
+  - obligation: CISCA-TRUST-MONEY
+    type: gate
+    owner: finance_manager
+    implementations:
+      - kernel: cash.segregated_bank_accounts
+      - kernel: control_accounts.UNALLOCATED_CASH
+      - pack: policies.yaml#cash.unallocated_cash_sla
+
+  - obligation: CISCA-RING-FENCING
+    type: limit
+    owner: head_of_ops
+    implementations:
+      - pack: funds.EXB-A.ring_fencing
+      - kernel: redemption.partial_fill_and_deferral
+
+  - obligation: CISCA-PRICING-ERRORS
+    type: gate
+    owner: head_of_ops
+    implementations:
+      - kernel: prices.versions_never_overwrite
+      - kernel: blocks.correct_price
+      - pack: policies.yaml#pricing_errors
+
+  - obligation: CISCA-TRUSTEE-REPORTING
+    type: report
+    owner: head_of_compliance
+    implementations:
+      - calendar: regulatory/compliance-calendar.yaml#trustee-report
+      - kernel: queries.backdating_register
+      - kernel: queries.break_register
+
+  # ------------------------------------------------------------------- FICA
+  - obligation: FICA-CDD
+    legislation: FICA (Financial Intelligence Centre Act, 2001), s21 and s21A–H
+    type: gate
+    owner: money_laundering_reporting_officer
+    implementations:
+      - kernel: gates.kyc_current_on_dealing
+      - kernel: gates.kyc_current_on_payment
+      - pack: workflows/investment.yaml#captured->held
+      - pack: workflows/redemption.yaml#captured->validated
+    evidence: [kyc_status_events, cdd_documents]
+
+  - obligation: FICA-EDD-PROMINENT-PERSONS
+    legislation: FICA s21C–s21H
+    type: gate
+    owner: money_laundering_reporting_officer
+    implementations:
+      - pack: policies.yaml#fica.risk_rating       # prominent persons and high-risk clients
+      - manual: "Senior management approval before onboarding a prominent person"
+    attestation: { frequency: quarterly, role: money_laundering_reporting_officer, approver: head_of_compliance }
+
+  - obligation: FICA-RECORDS
+    legislation: FICA s22 and s22A
+    type: record
+    owner: money_laundering_reporting_officer
+    implementations:
+      - kernel: ledger.immutable_events
+      - pack: policies.yaml#retention               # five years
+
+  - obligation: FICA-THRESHOLD-REPORTS
+    legislation: FICA s28
+    type: report
+    owner: money_laundering_reporting_officer
+    implementations:
+      - kernel: limits.large_cash_transaction_flag
+      - calendar: regulatory/compliance-calendar.yaml#fic-ctr
+
+  - obligation: FICA-SUSPICIOUS-REPORTS
+    legislation: FICA s29
+    type: report
+    owner: money_laundering_reporting_officer
+    implementations:
+      - pack: workflows/suspicious-activity.yaml
+      - calendar: regulatory/compliance-calendar.yaml#fic-str
+
+  - obligation: FICA-RMCP
+    legislation: FICA s42
+    type: attestation
+    owner: money_laundering_reporting_officer
+    implementations:
+      - manual: "Annual review of the risk management and compliance programme"
+    attestation: { frequency: annual, role: money_laundering_reporting_officer, approver: board }
+
+  # ------------------------------------------------------------------ POPIA
+  - obligation: POPIA-SECURITY-SAFEGUARDS
+    legislation: POPIA s19
+    type: gate
+    owner: information_officer
+    implementations:
+      - kernel: security.tenant_isolation
+      - kernel: security.access_logging
+
+  - obligation: POPIA-RETENTION
+    legislation: POPIA s14
+    type: record
+    owner: information_officer
+    implementations:
+      - pack: policies.yaml#retention
+
+  - obligation: POPIA-BREACH-NOTIFICATION
+    legislation: POPIA s22
+    type: timing
+    owner: information_officer
+    implementations:
+      - pack: workflows/security-incident.yaml
+
+  # -------------------------------------------------------------------- Tax
+  - obligation: ITA-IT3-REPORTING
+    legislation: Income Tax Act and Tax Administration Act third-party reporting
+    type: report
+    owner: head_of_tax
+    implementations:
+      - calendar: regulatory/compliance-calendar.yaml#it3-submission
+      - kernel: queries.tax_certificates
+
+  - obligation: ITA-DIVIDENDS-TAX
+    legislation: Income Tax Act s64E
+    type: limit
+    owner: head_of_tax
+    implementations:
+      - kernel: distribution.withholding_posting
+      - pack: policies.yaml#tax.dwt_rate             # 20%, with a source and an effective date
+
+  # ------------------------------------------------------------ Not applicable
+  - obligation: PFA-REGULATION-28
+    applicability: not_applicable
+    reason: "Example Manco offers no retirement fund products. Regulation 28 applies to the LISP tenant."
+    approved_by: [head_of_compliance, key_individual]
+    approved_on: 2026-09-20
+
+  - obligation: INSURANCE-PPR-DISCLOSURE
+    applicability: not_applicable
+    reason: "No life-wrapped products."
+    approved_by: [head_of_compliance, key_individual]
+    approved_on: 2026-09-20

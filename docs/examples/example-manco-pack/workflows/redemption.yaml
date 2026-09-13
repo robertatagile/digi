@@ -1,6 +1,7 @@
 workflow: redemption
 pack: example-manco
 version: 2026.10.0
+serves: [FICA-CDD, CISCA-FORWARD-PRICING, CISCA-RING-FENCING, FSR-COMPLAINTS-HANDLING]
 states: [captured, held, validated, ring_fenced, priced, approved, paid, confirmed, rejected]
 transitions:
   - from: captured
@@ -14,6 +15,12 @@ transitions:
     to: held
     when: not pack.bank_details_stable(days: 30)
     task: { name: verify_bank_details_by_call_back, role: ops_verifier, sla: 1 business day }
+  - from: captured
+    to: held
+    when: not kernel.fica_current
+    serves: [FICA-CDD]
+    message: "Blocked by FICA-CDD: verification expired"
+    task: { name: refresh_customer_due_diligence, role: client_services, sla: 5 business days }
   - from: held
     to: validated
     guard: task.verify_bank_details_by_call_back.done

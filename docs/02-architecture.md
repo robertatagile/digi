@@ -9,6 +9,7 @@ flowchart TB
     WF[Workflows]
     PO[Policies]
     IN[Integrations]
+    RB[Regulatory bindings]
     TS[Tests]
   end
   subgraph KERNEL["Kernel — fixed, shared, versioned"]
@@ -19,6 +20,7 @@ flowchart TB
     PR[Prices and pricing points]
     VL[Valuation engine]
     CM[Cash management]
+    OR["Obligation register<br/>legislation · bindings · coverage"]
   end
   PACKS -->|commands only| BB
   BB --> LG
@@ -27,6 +29,8 @@ flowchart TB
   PR --> VL
   RG --> VL
   CM --> LG
+  OR --> CP
+  RB --> OR
 ```
 
 - The **kernel** is one codebase. Every tenant runs the same kernel version.
@@ -46,6 +50,7 @@ flowchart TB
 | **Control plane** | Maker-checker, segregation of duties, limits, exceptions, breaks, day close, audit trail. | Maker ≠ checker. Day close blocks on open breaks above tolerance. |
 | **Party and account** | Investors, advisers, nominees, KYC status, bank details, accounts. | Bank detail changes are controlled events. |
 | **Queries** | As-at views on both time axes, with a price policy. | Every value carries its price basis. |
+| **Obligation register** | The legislation library and each tenant's bindings: FSR Act, COFI, FAIS, CISCA, FICA, POPIA and more. Coverage gate, obligation tags on commands, compliance calendar. Doc 13. | A pack cannot be released with an unbound in-force obligation. Library changes need two approvers. |
 
 ## Tenant Pack contents
 
@@ -55,6 +60,7 @@ flowchart TB
 | **Workflows** | Intake channels, validation steps, holds, approval tiers, exception routing, communications. |
 | **Policies** | Units-on-cleared-funds, backdating and loss allocation, pricing error handling, approval limits (tighter than kernel), retention. |
 | **Integrations** | Bank file formats, FinSwitch mappings, fund accounting feed, SARS, FIC, statement templates. |
+| **Regulatory bindings** | `regulatory/obligations.yaml` and the compliance calendar. Every rule names the obligations it serves. Doc 13. |
 | **Tests** | Scenario tests in domain language with expected postings. Golden files from the shadow run. |
 
 A pack is a set of **declarative, typed files** in the Pack DSL (doc 09). It runs in a **sandbox** with no I/O of its own.

@@ -2,6 +2,7 @@ pack: example-manco
 version: 2026.10.0
 
 cash:
+  serves: [CISCA-TRUST-MONEY]
   units_on:
     eft: cleared_funds
     instant_payment: receipt
@@ -18,6 +19,7 @@ cash:
     source: { doc: "Main Deed, Example Collective Investment Scheme (2019)", section: "9.4" }
 
 backdating:
+  serves: [CISCA-FORWARD-PRICING, CISCA-TRUSTEE-REPORTING]
   max_age_days: 30
   approvals_required: 2            # kernel minimum is 2; the pack may only raise it
   reasons:
@@ -45,6 +47,7 @@ backdating:
   source: { doc: "Operations manual v7", section: "8" }
 
 pricing_errors:
+  serves: [CISCA-PRICING-ERRORS]
   materiality: 0.5%
   above_materiality:
     investors: reprice_affected_deals
@@ -73,3 +76,19 @@ communications:
   confirmation: { within: 1 business day, channels: [email, portal] }
   statement: { frequency: quarterly }
   source: { doc: "Operations manual v7", section: "10" }
+
+retention:
+  serves: [FICA-RECORDS, FAIS-RECORDS, POPIA-RETENTION]
+  client_records: 5 years after the relationship ends
+  transaction_records: 5 years after the transaction
+  source: { doc: "FICA s22, s22A; FAIS s18; POPIA s14", section: "n/a" }
+
+tax:
+  dwt_rate: { value: 20%, effective_from: 2017-02-22, serves: [ITA-DIVIDENDS-TAX],
+              source: { doc: "Income Tax Act s64E", section: "n/a" } }
+
+fica:
+  risk_rating:
+    serves: [FICA-EDD-PROMINENT-PERSONS]
+    prominent_person_lists: [domestic_prominent_influential_persons, foreign_prominent_public_officials]
+    high_risk_requires: senior_management_approval

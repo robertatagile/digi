@@ -1,5 +1,7 @@
 # 11. Regulatory context and integration
 
+This is the short map. **Doc 13** models legislation as a controlled, manco-managed layer with obligations, bindings, coverage and a compliance calendar.
+
 Numeric limits and rates below are **pack parameters**. They change. Every pack rule cites its source and its effective date. Check current legislation before release.
 
 ## Regulatory map
@@ -8,7 +10,7 @@ Numeric limits and rates below are **pack parameters**. They change. Every pack 
 |--------|-----------------|--------|------|
 | **CISCA** and its notices | Manco duties, deed, trustee, forward pricing, segregated trust money, ring-fencing, pricing error handling | Forward pricing, immutability, control accounts, price versions | Deed-specific rules, ring-fencing thresholds, materiality |
 | **ASISA standards** | Pricing errors, fund classification, cost disclosure, MDD content | Correction block mechanics | Materiality, disclosure templates |
-| **FSCA conduct rules**, COFI incoming | Treating customers fairly, complaints, conduct reporting | Audit trail, as-at reproducibility | Communications, complaint workflows |
+| **FSR Act** conduct standards, complaints and returns; **COFI** incoming | Treating customers fairly, complaints, conduct reporting | Audit trail, as-at reproducibility | Communications, complaint workflows |
 | **FAIS** | Advisers and FSPs, LISP as administrative FSP | Adviser party type, mandate flags | Adviser fee rules, mandate checks |
 | **FICA** | Customer due diligence, risk rating, threshold and suspicious transaction reports | KYC status flag, dealing gates, large transaction flags | Risk rating rules, document lists, report formats |
 | **POPIA** | Personal information | Tenant isolation, access logging, retention hooks | Retention periods, consent handling |

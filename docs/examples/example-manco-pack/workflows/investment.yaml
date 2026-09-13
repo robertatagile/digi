@@ -1,6 +1,7 @@
 workflow: investment
 pack: example-manco
 version: 2026.10.0
+serves: [FICA-CDD, CISCA-FORWARD-PRICING, CISCA-TRUST-MONEY]
 states: [captured, held, in_good_order, funded, priced, confirmed, rejected]
 transitions:
   - from: captured

@@ -36,10 +36,16 @@ def on(day: int, month: int = 9) -> date:
     return date(2026, month, day)
 
 
+VERIFIED_ACCOUNTS = ("ACC-1", "ACC-2", "ACC-3", "ACC-4", "ACC-9", "BUYER", "SELLER")
+
+
 def kernel(**kwargs) -> Kernel:
     defaults = dict(tenant="example-manco", pack_version="2026.10.0", loss_policy=POLICY)
     defaults.update(kwargs)
-    return Kernel(**defaults)
+    k = Kernel(**defaults)
+    for account in VERIFIED_ACCOUNTS:
+        k.set_kyc_status(account=account, status="verified", actor="fica_officer", at=at(1, 8))
+    return k
 
 
 def price(k: Kernel, day: int, cpu: str, *, month: int = 9, hour: int = 17, override: str | None = None) -> None:

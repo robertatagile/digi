@@ -11,6 +11,7 @@ A **Tenant Pack** is one manco's or LISP's complete implementation on top of the
 | `policies/` | Units-on policy, backdating and loss allocation, pricing errors, approval limits, retention. |
 | `integrations/` | Bank formats, FinSwitch mappings, fund accounting feed, SARS and FIC outputs, templates. |
 | `tests/` | Scenario tests in domain language with expected postings. Golden files from the shadow run. |
+| `regulatory/` | The obligation register: bindings for FSR Act, COFI, FAIS, CISCA, FICA, POPIA and more, plus the compliance calendar. Doc 13. |
 | `provenance/` | For every rule, the source document, section and quote. |
 
 A pack is **generated**, then **reviewed**, then **released** as a version. The kernel stamps the pack version on every command and journal.
@@ -167,6 +168,7 @@ The model also writes the tests: one scenario per rule, plus edge cases the kern
 | Tighten-only | Every limit, approval and gate against the kernel minimum |
 | Coverage | Every class has every mandatory rule. Every reason code has a loss owner. Every workflow reaches a terminal state |
 | Segregation | No transition where maker role can also be checker role |
+| Regulatory coverage | Every applicable in-force obligation is bound or justified. Every rule's `serves:` names real obligations |
 | Property tests | Random instruction sequences through the kernel simulator. Register reconciles. Journals balance. Controls clear |
 
 ### Simulate

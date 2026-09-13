@@ -1,0 +1,64 @@
+# Statutory returns and attestations. Overdue items are breaks with an owner.
+# Month close cannot pass with an overdue statutory return unless an exception is approved.
+pack: example-manco
+version: 2026.10.0
+
+items:
+  - id: fsca-conduct-return
+    obligation: FSR-CONDUCT-RETURNS
+    what: FSCA conduct of business return
+    frequency: as_prescribed
+    owner: head_of_compliance
+    evidence: [submission_receipt]
+
+  - id: fsca-cis-statistics
+    obligation: CISCA-TRUSTEE-REPORTING
+    what: Quarterly CIS statistics to the FSCA
+    frequency: quarterly
+    due: 30 days after quarter end
+    owner: head_of_compliance
+    evidence: [submission_receipt]
+
+  - id: trustee-report
+    obligation: CISCA-TRUSTEE-REPORTING
+    what: Trustee pack — backdating register, break register, pricing errors, ring-fencing decisions
+    frequency: monthly
+    due: 10th business day
+    owner: head_of_ops
+    evidence: [trustee_pack, trustee_acknowledgement]
+
+  - id: fic-ctr
+    obligation: FICA-THRESHOLD-REPORTS
+    what: Cash threshold reports via goAML
+    frequency: per_event
+    due: within the prescribed period after the transaction
+    owner: money_laundering_reporting_officer
+
+  - id: fic-str
+    obligation: FICA-SUSPICIOUS-REPORTS
+    what: Suspicious and unusual transaction reports via goAML
+    frequency: per_event
+    due: within the prescribed period after suspicion arises
+    owner: money_laundering_reporting_officer
+
+  - id: it3-submission
+    obligation: ITA-IT3-REPORTING
+    what: IT3(b), IT3(c) and IT3(s) submissions to SARS
+    frequency: per SARS timetable
+    owner: head_of_tax
+    evidence: [sars_acknowledgement]
+
+  - id: rmcp-review
+    obligation: FICA-RMCP
+    what: Annual RMCP review and board approval
+    frequency: annual
+    owner: money_laundering_reporting_officer
+    evidence: [board_minute]
+
+  - id: tcf-review
+    obligation: COFI-TCF-OUTCOMES
+    status: pending
+    what: Quarterly TCF outcomes review
+    frequency: quarterly
+    owner: head_of_compliance
+    evidence: [committee_minute]

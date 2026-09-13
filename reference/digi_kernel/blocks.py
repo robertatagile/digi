@@ -27,6 +27,10 @@ ZAR = "ZAR"
 TAX_WITHHELD = "TAX_WITHHELD_PAYABLE"
 MANCO_ERROR = "MANCO_ERROR_ACCOUNT"
 
+# Obligations the kernel's own gates serve. Tags land in journal evidence as "obligation:<id>".
+FICA_CDD = "FICA-CDD"
+CISCA_FORWARD_PRICING = "CISCA-FORWARD-PRICING"
+
 
 def bank(bank_account: str) -> str:
     return f"BANK:{bank_account}"
@@ -181,6 +185,7 @@ class Kernel:
         self.payables: dict[str, Payable] = {}
         self.backdating_register: list[BackdatingRecord] = []
         self.corrections: list[CorrectionRecord] = []
+        self.kyc_status: dict[str, str] = {}  # account -> "verified" | "expired" | "pending"
         self._seq = 0
 
     # ------------------------------------------------------------------ helpers
@@ -228,6 +233,29 @@ class Kernel:
         if price is None:
             raise BlockError(f"no official price known for {class_id} at {at}")
         return price
+
+    def set_kyc_status(self, *, account: str, status: str, actor: str, at: datetime) -> None:
+        """FICA customer due diligence status. A kernel flag with controlled transitions."""
+        if status not in ("verified", "expired", "pending"):
+            raise BlockError(f"unknown KYC status {status!r}")
+        self.kyc_status[account] = status
+
+    def _require_kyc(self, account: str, action: str) -> str:
+        """The FICA-CDD gate. Blocks dealing and payment for an account that is not verified."""
+        status = self.kyc_status.get(account, "pending")
+        if status != "verified":
+            raise ControlError(f"Blocked by {FICA_CDD}: account {account} is {status}; {action} refused")
+        return f"obligation:{FICA_CDD}"
+
+    def regulatory_trail(self, obligation_id: str, *, since: Optional[datetime] = None, until: Optional[datetime] = None) -> list[Journal]:
+        """Every journal that evaluated an obligation. Answers an FSCA or FIC information request."""
+        tag = f"obligation:{obligation_id}"
+        return [
+            j for j in self.ledger.journals()
+            if tag in j.evidence
+            and (since is None or j.posted_at >= since)
+            and (until is None or j.posted_at <= until)
+        ]
 
     def _new_deal(self, **kwargs) -> Deal:
         deal = Deal(id=self._next_id("D"), **kwargs)
@@ -366,6 +394,7 @@ class Kernel:
             raise ControlError(
                 f"{ins.dealing_date} is closed; use backdate_investment with a reason and a loss owner (I11)"
             )
+        kyc_tag = self._require_kyc(ins.account, "dealing")
         price = self.prices.official_at(ins.class_id, ins.dealing_date, knowledge_as_at=at)
         if price is None:
             raise BlockError(f"no official price for {ins.class_id} on {ins.dealing_date} yet (I3)")
@@ -382,7 +411,8 @@ class Kernel:
             postings.append(cr(fees_payable(fee_beneficiary), "money", ZAR, fee))
         journal = self._journal(
             effective_date=ins.dealing_date, at=at, actor=actor, command="PriceInvestment",
-            postings=postings, evidence=[f"instruction:{ins.id}", price.ref],
+            postings=postings,
+            evidence=[f"instruction:{ins.id}", price.ref, kyc_tag, f"obligation:{CISCA_FORWARD_PRICING}"],
         )
         self.register.check(ins.class_id)
         ins.status = "priced"
@@ -469,11 +499,12 @@ class Kernel:
         if payable.status != "open":
             raise BlockError(f"payable {payable.id} is {payable.status}, not open (I8)")
         approvals = require_approvals(maker, approvals, minimum=1)
+        kyc_tag = self._require_kyc(payable.account, "payment")
         payable.status = "in_transit"
         return self._journal(
             effective_date=at.date(), at=at, actor=maker, command="InstructPayment",
             postings=[dr(redemptions_payable(payable.fund), "money", ZAR, payable.amount), cr(in_transit(payable.fund), "money", ZAR, payable.amount)],
-            evidence=[f"payable:{payable.id}"] + [f"approval:{a.role}:{a.actor}" for a in approvals],
+            evidence=[f"payable:{payable.id}", kyc_tag] + [f"approval:{a.role}:{a.actor}" for a in approvals],
         )
 
     def confirm_payment(self, *, payable_id: str, bank_account: str, at: datetime, actor: str) -> Journal:

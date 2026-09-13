@@ -14,6 +14,7 @@ Design repository for a new South African **LISP and unit trust (CIS) administra
 | [docs/07-backdating-and-corrections.md](docs/07-backdating-and-corrections.md) | Who takes the loss when a price moves. |
 | [docs/06-valuation.md](docs/06-valuation.md) | Calculate, don't store. Near real-time values. |
 | [docs/09-tenant-packs-ai-generated.md](docs/09-tenant-packs-ai-generated.md) | How a manco's implementation is generated, proven and released. |
+| [docs/13-legislation-as-a-controlled-layer.md](docs/13-legislation-as-a-controlled-layer.md) | Legislation (FSR Act, COFI, FAIS, CISCA, FICA …) as a controlled, manco-managed layer bound to controls. |
 
 Full index: [docs/README.md](docs/README.md)
 
