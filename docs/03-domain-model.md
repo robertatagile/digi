@@ -20,7 +20,8 @@
 | **Instrument (unit class)** | The priced thing an account holds. A, B, C classes with different fees. Has an ISIN. Has an **issuer**: own (this tenant's fund) or external (another manco's fund). |
 | **Model portfolio** | A recipe of classes with target weights. LISP only. |
 | **Account** | An investor's holding container for **any number of instruments**, own or external. Has a **product type**: discretionary, TFSA, RA, preservation, living annuity, endowment. Product rules live in the pack. |
-| **Component** | A sub-position inside an account, for example the two-pot components. Pack defined. Kernel enforces separate unit balances. |
+| **Component** | A sub-account written `ACCOUNT:component`, for example the two-pot components. Separate unit balances on the same register. FICA and party data live on the root. |
+| **Product wrapper** | Not an entity. A set of pack guards, holds and tax side effects on the ordinary blocks. Doc 10. |
 
 ### Instructions and deals
 

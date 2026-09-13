@@ -12,6 +12,8 @@ A **generated Tenant Pack** for a fictional manco, "Example Manco". It shows the
 | `tests/backdating.scenarios.yaml` | Scenario tests for the delta and the loss owner. |
 | `regulatory/obligations.yaml` | The manco-managed obligation register: FSR Act, COFI, FAIS, CISCA, FICA, POPIA and tax obligations bound to kernel controls, pack rules or attested procedures. |
 | `regulatory/compliance-calendar.yaml` | Statutory returns and attestations with owners. Overdue is a break. |
+| `products/tfsa.yaml` | Tax-free savings as guards on the investment block. Contribution limits are parameters with a source. |
+| `products/retirement-annuity.yaml` | Retirement annuity as components, guards on the redemption block, a tax directive hold and Regulation 28 monitoring. |
 | `open-questions.md` | Ambiguities the generator found. Release is blocked until they are answered. |
 
 Every rule carries a `source`. A rule without one carries an `assumption` with an owner.

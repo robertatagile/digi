@@ -1,0 +1,43 @@
+product: retirement_annuity
+pack: example-manco
+version: 2026.10.0
+account_prefix: RA-
+components: [vested, savings, retirement]     # sub-accounts RA-<n>:vested, RA-<n>:savings, RA-<n>:retirement
+serves: [PFA-TWO-POT, PFA-REGULATION-28, ITA-TAX-DIRECTIVES, ITA-IT3-REPORTING, FICA-CDD]
+
+contributions:
+  split: { savings: 1/3, retirement: 2/3 }    # from 2024-09-01; vested receives none
+  certificate: IT3(f)
+  source: { doc: "Pension Funds Act two-pot amendments", section: "n/a" }
+
+guards:
+  - block: LockUnits
+    rule: ra-withdrawal
+    component: [vested, retirement]
+    when: party.age < retirement_age and not (ill_health or emigration_rules_met)
+    message: "component is locked before retirement age (Pension Funds Act, fund rules)"
+  - block: LockUnits
+    rule: ra-withdrawal
+    component: savings
+    when: withdrawals(account, tax_year) >= 1 or value(units) < savings_minimum
+    message: "one savings withdrawal per tax year above the minimum (two-pot)"
+
+parameters:
+  retirement_age:  { value: 55,      source: { doc: "Fund rules, Example RA Fund", section: "6" } }
+  savings_minimum: { value: R2 000,  source: { doc: "Pension Funds Act two-pot amendments", section: "n/a" } }
+
+holds:
+  - on: PriceRedemption
+    hold: tax_directive
+    release_needs: sars_directive_number
+    posts: withholding_per_directive
+    serves: [ITA-TAX-DIRECTIVES]
+
+at_retirement:
+  options:
+    - in_specie_transfer_to_living_annuity    # transfer block, no price
+    - lump_sum_within_the_allowed_portion     # redemption block with the tax_directive hold
+  transfers_out: section_14
+
+monitoring:
+  regulation_28: look_through_daily

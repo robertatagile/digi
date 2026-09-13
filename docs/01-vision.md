@@ -47,6 +47,7 @@ Configuration becomes a **per-manco codebase you can read**. Generated in days. 
 
 - One register for manco and LISP tenants. An account holds any number of instruments, own or external.
 - Nominee (bulk) holdings across mancos, with bulk dealing and allocation.
+- Product wrappers (tax-free savings, retirement annuity, preservation, living annuity, endowment) as guards on the same blocks.
 - Cash management and settlement.
 - Distributions, fees, regular instructions, corporate actions.
 - Valuation on last known price, near real time.

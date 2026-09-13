@@ -1,0 +1,28 @@
+product: tax_free_savings
+pack: example-manco
+version: 2026.10.0
+account_prefix: TFSA-
+serves: [ITA-TFSA-LIMITS, ITA-IT3-REPORTING, FICA-CDD]
+
+guards:
+  - block: MatchCash            # refused cash stays in unallocated cash and is refunded
+    rule: tfsa-contribution-limit
+    when: contributions(account, tax_year) + amount > limits.annual
+      or contributions(account, lifetime) + amount > limits.lifetime
+    message: "tax-free contribution limit would be exceeded (ITA s12T)"
+  - block: FundOnExposure
+    rule: tfsa-contribution-limit
+
+limits:
+  annual:   { value: R36 000,  effective_from: 2020-03-01, source: { doc: "Income Tax Act s12T", section: "n/a" } }
+  lifetime: { value: R500 000, effective_from: 2015-03-01, source: { doc: "Income Tax Act s12T", section: "n/a" } }
+
+redemption:
+  restrictions: none
+  note: withdrawals do not restore contribution room
+
+distributions:
+  dividends_tax: exempt          # no withholding inside the wrapper
+
+reporting:
+  certificate: IT3(s)

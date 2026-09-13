@@ -67,27 +67,53 @@ One journal. One command. Every investor deal references it.
 
 Reconciled daily against the manco's statement. Differences are breaks with an owner. Rounding never reaches an investor.
 
-## Products as pack rules
+## Product wrappers are guards on the same blocks
 
-Product rules change with legislation. They belong in the pack, generated and effective-dated. The kernel supplies **components** and **restrictions**. They apply to any tenant that sells the product, manco or LISP.
+A tax-free savings account or a retirement annuity is not a different kind of thing. Money goes **into an instrument** through the investment block. Money comes **out** through the redemption block. The wrapper adds three things, and only three:
 
-| Product | Typical pack rules | Kernel primitive |
-|---------|--------------------|------------------|
-| Discretionary | Free dealing. CGT on switches | Tax lots per deal |
-| Tax-free savings | Annual and lifetime contribution limits | Contribution counters per tax year |
-| Retirement annuity | No withdrawal before retirement age except as allowed. Regulation 28 limits. Two-pot components | Components with separate unit balances. Restriction flags |
-| Preservation fund | One withdrawal rule. Two-pot components. Section 14 transfers | Components. Transfer block |
-| Living annuity | Income between the regulated minimum and maximum. Annual review | Scheduled redemptions with bounds |
-| Endowment | Restriction period. Contribution limits within the period | Restriction flags, contribution counters |
+1. **Guards** on the blocks. A guard can refuse. It cannot post or change anything.
+2. **Holds** on a payable. A held payable cannot be paid until the hold is released with a reference.
+3. **Tax side effects and reporting.** Withholding postings, certificates, directives.
 
-Numeric limits and rates are **pack parameters** with a source and an effective date. Never hard-coded in the kernel.
+The kernel supplies the primitives. The pack, generated per tenant, supplies the rules.
 
-**Two-pot** is the clearest case for generation over configuration. In the kernel it is a redemption on a component with a restriction. In the pack it is a rule with a citation and a test.
+| Kernel primitive | What it is |
+|------------------|------------|
+| **Pack guard** | A named rule attached to a block command. Runs after the kernel's own checks. Refuses with a message that names the rule and the law. Its tag lands in the journal's evidence. |
+| **Component** | A sub-account written `ACCOUNT:component`. Separate unit balances on the same register. FICA and party data live on the root. Two-pot needs three: vested, savings, retirement. |
+| **Contribution counter** | Derived from instructions with a cash fact for a period. Never stored. |
+| **Hold** | A named condition on a payable, for example `tax_directive`. Releasing it needs a reference and may post withholding. |
+| **Scheduled redemption with bounds** | For living annuity income. A regular instruction whose amount must stay inside pack limits. |
+| **Transfer block** | Units move without a price. Section 14 transfers and in specie moves at retirement. |
+
+### Product by block
+
+| Product | Investment block | Redemption block | Transfer or switch | Before payment | Tax and reporting |
+|---------|------------------|------------------|--------------------|----------------|-------------------|
+| **Tax-free savings** | Guard: annual and lifetime contribution counters. Excess refused at cash matching, stays refundable | Unrestricted. Withdrawals do not restore contribution room | Transfers between providers only, no cash out | None | No dividends tax withheld. IT3(s) |
+| **Retirement annuity** | Contributions recorded for the IT3(f) certificate. Split across components per the two-pot rules | Guard: retirement and vested components locked before retirement age. Savings component: one withdrawal per tax year, above the minimum | Section 14 transfer. At retirement, an in specie transfer into a living annuity or a lump sum redemption | Hold: `tax_directive`. The release posts the withholding SARS prescribes | Directive per lump sum. Regulation 28 look-through |
+| **Preservation fund** | Transfers in only, no contributions | Guard: the one pre-retirement withdrawal rule plus the two-pot component rules | Section 14 in and out | Hold: `tax_directive` | Directive per lump sum |
+| **Living annuity** | Funded by transfer in, not by contributions | Scheduled redemptions bounded by the regulated minimum and maximum. Annual review changes the schedule | Transfer between insurers | Hold: `paye` on the income schedule | PAYE per payment. IRP5 |
+| **Endowment** | Guard: the contribution rule inside the restriction period | Guard: one surrender inside the restriction period | Cession is a transfer | None | Taxed inside the policyholder fund. No IT3 to the investor |
+
+Every cell is a guard, a hold or a report on a block that already exists. No new blocks.
+
+### A retirement annuity withdrawal, end to end
+
+1. The investor asks for R5 000 from the **savings component**. The kernel receives a redemption on `RA-7:savings`.
+2. **Lock units.** The kernel checks available units. Then the pack guard `ra-withdrawal` runs: no earlier savings withdrawal this tax year, amount above the minimum. The journal carries `rule:ra-withdrawal`.
+3. **Price.** Units are cancelled at the pricing point. The payable is created **held** for `tax_directive`.
+4. **Directive.** Tax operations request the directive from SARS. When it arrives, the hold is released with the directive number. The prescribed tax posts `Dr REDEMPTIONS_PAYABLE · Cr TAX_WITHHELD_PAYABLE`. The evidence carries `obligation:ITA-TAX-DIRECTIVE`.
+5. **Pay.** The payment pipeline runs as for any redemption: FICA current, maker and checker, in transit, confirmed.
+
+A retirement component withdrawal at age 40 stops at step 2 with "Blocked by pack rule ra-withdrawal: retirement component is locked before age 55". The units never leave the holding.
+
+The reference model runs this scenario and the tax-free savings one in `reference/tests/test_wrappers.py`.
 
 ## Model portfolios and rebalancing
 
 - A model is a recipe: instruments and target weights, versioned. Own and external instruments mix freely.
-- Rebalancing is a **generated set of switches** per account, computed on last known prices, executed directly for own instruments and in bulk for external ones.
+- Rebalancing is a **generated set of switches** per account, computed on last known prices, executed directly for own instruments and in bulk for external ones. Inside a wrapper the same guards apply to every leg.
 - Phasing in is a schedule of switches out of a cash instrument.
 - Drift tolerance, frequency and exclusions are pack rules.
 

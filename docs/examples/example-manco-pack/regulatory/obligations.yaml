@@ -212,12 +212,39 @@ bindings:
       - kernel: distribution.withholding_posting
       - pack: policies.yaml#tax.dwt_rate             # 20%, with a source and an effective date
 
-  # ------------------------------------------------------------ Not applicable
+  # ---------------------------------------------------------- Product wrappers
+  - obligation: ITA-TFSA-LIMITS
+    legislation: Income Tax Act s12T
+    type: limit
+    owner: head_of_tax
+    implementations:
+      - pack: products/tfsa.yaml#guards.tfsa-contribution-limit
+      - kernel: queries.contributions             # counters derived from facts
+
+  - obligation: PFA-TWO-POT
+    legislation: Pension Funds Act two-pot amendments
+    type: gate
+    owner: product_owner
+    implementations:
+      - kernel: components                        # separate unit balances per component
+      - pack: products/retirement-annuity.yaml#guards.ra-withdrawal
+
   - obligation: PFA-REGULATION-28
-    applicability: not_applicable
-    reason: "Example Manco offers no retirement fund products. Regulation 28 applies to the LISP tenant."
-    approved_by: [head_of_compliance, key_individual]
-    approved_on: 2026-09-20
+    type: limit
+    owner: product_owner
+    implementations:
+      - pack: products/retirement-annuity.yaml#monitoring.regulation_28
+      - kernel: queries.look_through
+
+  - obligation: ITA-TAX-DIRECTIVES
+    legislation: Income Tax Act, Fourth Schedule
+    type: gate
+    owner: head_of_tax
+    implementations:
+      - kernel: payables.holds.tax_directive       # payment waits; release posts the withholding
+      - pack: products/retirement-annuity.yaml#holds
+
+  # ------------------------------------------------------------ Not applicable
 
   - obligation: INSURANCE-PPR-DISCLOSURE
     applicability: not_applicable

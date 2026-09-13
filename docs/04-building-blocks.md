@@ -7,7 +7,7 @@ Every block obeys the same contract. No exceptions.
 | Element | Rule |
 |---------|------|
 | **Command** | Typed. Idempotent by command id. Carries actor, tenant, pack version, evidence references. |
-| **Preconditions** | Kernel invariants first. Then pack guards. A pack can only add conditions. |
+| **Preconditions** | Kernel invariants first. Then **pack guards**: named rules that can refuse and nothing else. Their tags land in the journal's evidence. Product wrappers such as TFSA and RA are built from guards. |
 | **Effect** | Exactly one balanced journal in money and units. Events emitted after commit. |
 | **Control accounts** | The block draws from one control account and leaves value in the next. |
 | **Postconditions** | Registered with the control plane: expected clearing time and tolerance. |
@@ -18,8 +18,8 @@ Every block obeys the same contract. No exceptions.
 | Block | Kernel fixes | Pack decides |
 |-------|--------------|--------------|
 | Instruction intake | Received-at, evidence, status machine, in-good-order flag | Channels, document checks, cut-off rules, holds |
-| Investment | Postings, control accounts, pricing at a published price | Minimums, initial fee formula, eligibility, units-on-cleared-funds policy |
-| Redemption | Available units check, cancellation postings, payable creation | Approval tiers, bank detail cooling-off period, ring-fencing thresholds |
+| Investment | Postings, control accounts, pricing at a published price | Minimums, initial fee formula, eligibility, units-on-cleared-funds policy, product guards such as contribution limits |
+| Redemption | Available units check, cancellation postings, payable creation, holds | Approval tiers, bank detail cooling-off period, ring-fencing thresholds, product guards such as retirement restrictions |
 | Bulk dealing and allocation | Aggregation, confirmation as a price fact, allocation maths, rounding account, break on mismatch | Cut-offs per manco, gross or net, channel mappings |
 | Switch | Atomic two legs through switch clearing | Which classes may switch, same-day or lagged legs |
 | Transfer | Units-only journal, tax lots carried | Which transfers are allowed per product |
@@ -111,6 +111,8 @@ Steps for **U** units at price **P**, amount **M = U × P**, tax withheld **T**:
 | Bank confirms | Dr `PAYMENTS_IN_TRANSIT` (M − T) · Cr `BANK` (M − T) | |
 
 **Available units** = holding − locked − pledged. An amount-based redemption is converted at the pricing point. It is capped at available units.
+
+**Holds.** A payable can carry named holds, for example `tax_directive` before a retirement lump sum. A held payable cannot be paid. Releasing a hold needs a reference and may post the withholding the reference prescribes.
 
 **Kernel checks.** Beneficiary bank account verified. Bank detail cooling-off honoured if the pack sets one. Approvals present per tier. FICA current. Ring-fencing decision recorded when the pack threshold is hit.
 

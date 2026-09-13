@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 from .controls import Approval, ControlError, DayClose, LossPolicy, require_approvals
 from .ledger import Journal, Ledger, Posting, cr, dr
@@ -76,6 +76,16 @@ def to_units(amount: Decimal, cpu: Decimal) -> Decimal:
 
 class BlockError(Exception):
     """Raised when a block's preconditions are not met."""
+
+
+# A pack guard looks at the kernel and the subject of a command and returns a refusal message, or None.
+# Guards run after the kernel's own checks. They can refuse. They cannot post or change anything (C10).
+Guard = Callable[["Kernel", object], Optional[str]]
+
+
+def account_root(account: str) -> str:
+    """Components are sub-accounts written ACCOUNT:component. FICA and party data live on the root."""
+    return account.split(":", 1)[0]
 
 
 @dataclass
@@ -149,6 +159,7 @@ class Payable:
     amount: Decimal
     deal_id: str
     status: str = "open"  # open, in_transit, paid
+    holds: set = field(default_factory=set)  # a held payable cannot be paid, e.g. "tax_directive"
 
 
 @dataclass(frozen=True)
@@ -204,6 +215,7 @@ class Kernel:
         self.kyc_status: dict[str, str] = {}  # account -> "verified" | "expired" | "pending"
         self.instruments: dict[str, str] = {}  # class id -> "own" | "external"
         self.bulks: dict[str, BulkInstruction] = {}
+        self.guards: dict[str, list[tuple[str, Guard]]] = {}  # command -> [(rule name, guard)]
         self._seq = 0
 
     # ------------------------------------------------------------------ helpers
@@ -261,6 +273,32 @@ class Kernel:
     def issuer_of(self, class_id: str) -> str:
         return self.instruments.get(class_id, "own")
 
+    def add_guard(self, *, command: str, rule: str, guard: Guard) -> None:
+        """A pack adds a named guard to a block. Product wrappers such as TFSA and RA are built from these."""
+        self.guards.setdefault(command, []).append((rule, guard))
+
+    def _pack_guards(self, command: str, subject: object) -> list[str]:
+        """Run the pack's guards for a command. Kernel checks always run first. Returns evidence tags."""
+        tags: list[str] = []
+        for rule, guard in self.guards.get(command, []):
+            message = guard(self, subject)
+            if message:
+                raise ControlError(f"Blocked by pack rule {rule}: {message}")
+            tags.append(f"rule:{rule}")
+        return tags
+
+    def contributions(self, account: str, *, start: date, end: date) -> Decimal:
+        """Money accepted into an account in a period. Derived from instructions with a cash fact. Never stored."""
+        total = ZERO
+        for ins in self.instructions.values():
+            if (
+                ins.account == account and ins.kind == "invest"
+                and ins.status in ("matched", "in_bulk", "priced")
+                and start <= ins.dealing_date <= end
+            ):
+                total += ins.funded_amount
+        return total
+
     def set_kyc_status(self, *, account: str, status: str, actor: str, at: datetime) -> None:
         """FICA customer due diligence status. A kernel flag with controlled transitions."""
         if status not in ("verified", "expired", "pending"):
@@ -269,7 +307,7 @@ class Kernel:
 
     def _require_kyc(self, account: str, action: str) -> str:
         """The FICA-CDD gate. Blocks dealing and payment for an account that is not verified."""
-        status = self.kyc_status.get(account, "pending")
+        status = self.kyc_status.get(account_root(account), "pending")
         if status != "verified":
             raise ControlError(f"Blocked by {FICA_CDD}: account {account} is {status}; {action} refused")
         return f"obligation:{FICA_CDD}"
@@ -365,13 +403,14 @@ class Kernel:
             raise BlockError(f"bank line {line.id} is already matched")
         if line.fund != ins.fund or line.amount != ins.amount:
             raise BlockError("no exact match; the receipt stays in unallocated cash for a human")
+        rule_tags = self._pack_guards("MatchCash", ins)  # e.g. a TFSA contribution limit; refused cash stays unallocated
         line.matched = True
         ins.funded_amount = line.amount
         ins.status = "matched"
         return self._journal(
             effective_date=at.date(), at=at, actor=actor, command="MatchCash",
             postings=[dr(unallocated(ins.fund), "money", ZAR, line.amount), cr(awaiting_pricing(ins.fund), "money", ZAR, line.amount)],
-            evidence=[f"bankline:{line.id}", f"instruction:{ins.id}"],
+            evidence=[f"bankline:{line.id}", f"instruction:{ins.id}"] + rule_tags,
         )
 
     def fund_on_exposure(self, *, instruction_id: str, at: datetime, actor: str) -> Journal:
@@ -384,13 +423,14 @@ class Kernel:
         current = self.ledger.balance(exposure(ins.fund))
         if current + ins.amount > self.exposure_limit:
             raise ControlError(f"settlement exposure limit {self.exposure_limit} would be breached (I4)")
+        rule_tags = self._pack_guards("FundOnExposure", ins)
         ins.funded_amount = ins.amount
         ins.on_exposure = True
         ins.status = "matched"
         return self._journal(
             effective_date=at.date(), at=at, actor=actor, command="FundOnExposure",
             postings=[dr(exposure(ins.fund), "money", ZAR, ins.amount), cr(awaiting_pricing(ins.fund), "money", ZAR, ins.amount)],
-            evidence=[f"instruction:{ins.id}"],
+            evidence=[f"instruction:{ins.id}"] + rule_tags,
         )
 
     def clear_exposure(self, *, instruction_id: str, bank_line_id: str, at: datetime, actor: str) -> Journal:
@@ -555,6 +595,7 @@ class Kernel:
         available = self.register.available_units(ins.account, ins.class_id)
         if ins.units > available:
             raise BlockError(f"only {available} units available, {ins.units} requested")
+        rule_tags = self._pack_guards("LockUnits", ins)  # e.g. retirement restrictions, two-pot rules
         ins.status = "locked"
         return self._journal(
             effective_date=at.date(), at=at, actor=actor, command="LockUnits",
@@ -562,10 +603,13 @@ class Kernel:
                 dr(holding_account(ins.account, ins.class_id), "units", ins.class_id, ins.units),
                 cr(locked_account(ins.account, ins.class_id), "units", ins.class_id, ins.units),
             ],
-            evidence=[f"instruction:{ins.id}"],
+            evidence=[f"instruction:{ins.id}"] + rule_tags,
         )
 
-    def price_redemption(self, *, instruction_id: str, at: datetime, actor: str, tax_withheld: Decimal = ZERO) -> tuple[Deal, Payable]:
+    def price_redemption(
+        self, *, instruction_id: str, at: datetime, actor: str, tax_withheld: Decimal = ZERO, holds: Iterable[str] = ()
+    ) -> tuple[Deal, Payable]:
+        """Cancel units at the pricing point and create the payable. `holds` name what must clear before payment."""
         ins = self._instruction(instruction_id, kind="redeem")
         if ins.status != "locked":
             raise BlockError(f"instruction {ins.id} must be locked first")
@@ -598,9 +642,33 @@ class Kernel:
             units=ins.units, investor_amount=gross, fund_amount=gross, fee=ZERO, price=price,
             effective_date=ins.dealing_date, journal_id=journal.id,
         )
-        payable = Payable(id=self._next_id("P"), fund=ins.fund, account=ins.account, amount=net, deal_id=deal.id)
+        payable = Payable(id=self._next_id("P"), fund=ins.fund, account=ins.account, amount=net, deal_id=deal.id, holds=set(holds))
         self.payables[payable.id] = payable
         return deal, payable
+
+    def release_hold(
+        self, *, payable_id: str, hold: str, reference: str, at: datetime, actor: str,
+        tax_withheld: Decimal = ZERO, obligation: Optional[str] = None,
+    ) -> Optional[Journal]:
+        """Clear a hold on a payable. A tax directive release posts the withholding it prescribes."""
+        payable = self.payables[payable_id]
+        if hold not in payable.holds:
+            raise BlockError(f"payable {payable.id} has no hold {hold!r}")
+        if not reference:
+            raise ControlError(f"releasing the {hold} hold needs a reference, for example the SARS directive number")
+        tax = Decimal(tax_withheld)
+        if tax < 0 or tax > payable.amount:
+            raise BlockError("withholding must be between zero and the payable amount")
+        journal = None
+        if tax > 0:
+            payable.amount -= tax
+            journal = self._journal(
+                effective_date=at.date(), at=at, actor=actor, command="ReleaseHold", reason=f"{hold}:{reference}",
+                postings=[dr(redemptions_payable(payable.fund), "money", ZAR, tax), cr(TAX_WITHHELD, "money", ZAR, tax)],
+                evidence=[f"payable:{payable.id}", f"{hold}:{reference}"] + ([f"obligation:{obligation}"] if obligation else []),
+            )
+        payable.holds.discard(hold)
+        return journal
 
     def fund_settles_redemption(self, *, deal_id: str, bank_account: str, at: datetime, actor: str) -> Journal:
         deal = self.deals[deal_id]
@@ -622,13 +690,16 @@ class Kernel:
             raise BlockError(f"no payable {payable_id} (I8)") from None
         if payable.status != "open":
             raise BlockError(f"payable {payable.id} is {payable.status}, not open (I8)")
+        if payable.holds:
+            raise ControlError(f"payable {payable.id} is held: {sorted(payable.holds)}; release the hold first")
         approvals = require_approvals(maker, approvals, minimum=1)
         kyc_tag = self._require_kyc(payable.account, "payment")
+        rule_tags = self._pack_guards("InstructPayment", payable)
         payable.status = "in_transit"
         return self._journal(
             effective_date=at.date(), at=at, actor=maker, command="InstructPayment",
             postings=[dr(redemptions_payable(payable.fund), "money", ZAR, payable.amount), cr(in_transit(payable.fund), "money", ZAR, payable.amount)],
-            evidence=[f"payable:{payable.id}", kyc_tag] + [f"approval:{a.role}:{a.actor}" for a in approvals],
+            evidence=[f"payable:{payable.id}", kyc_tag] + rule_tags + [f"approval:{a.role}:{a.actor}" for a in approvals],
         )
 
     def confirm_payment(self, *, payable_id: str, bank_account: str, at: datetime, actor: str) -> Journal:
