@@ -139,7 +139,7 @@ Available to any tenant. A manco with a fund of funds or its own platform uses t
 
 - Out leg posts like a redemption but credits `SWITCH_CLEARING` instead of `REDEMPTIONS_PAYABLE`.
 - In leg posts like an investment drawn from `SWITCH_CLEARING`.
-- Both legs commit together or neither does.
+- Both legs commit together or neither does. If either price is missing, nothing posts and the units stay held.
 - Different pricing points (15:00 local, 17:00 foreign, T+1 feeder) are supported. Cash rests in switch clearing until the in-leg price exists.
 - A leg on an external instrument goes through bulk dealing. A switch between an own fund and another manco's fund is still one atomic switch.
 - Net cash between funds settles through the custodian sweep.
@@ -159,7 +159,7 @@ Available to any tenant. A manco with a fund of funds or its own platform uses t
 
 - Declaration per class: cents per unit **D**, tax components, record date, pay date.
 - Holdings at record date are **derived** as at that effective date. Nothing is snapshotted in advance.
-- Entitlement per account **E = units × D**, rounded per pack. Σ rounding differences post to `ROUNDING`.
+- Entitlement per account **E = units × D**, rounded per pack. The declared total is units in issue × D. The difference between the declared total and Σ E posts to `ROUNDING`, never to an investor.
 - Money: Dr `DISTRIBUTIONS_DUE_FROM_FUND` ΣE · Cr `DISTRIBUTIONS_PAYABLE` ΣE − ΣT · Cr `TAX_WITHHELD_PAYABLE` ΣT.
 - **Reinvest:** Dr `DISTRIBUTIONS_PAYABLE` E · Cr `SUBS_PAYABLE_TO_FUND` E, and units issued at the reinvestment price.
 - **Pay out:** through the payment pipeline.
@@ -174,6 +174,7 @@ Available to any tenant. A manco with a fund of funds or its own platform uses t
 - The kernel executes a claim as a unit cancellation at a pricing point, or a cash deduction before units.
 - Money: Dr `FEES_DUE_FROM_FUND` F · Cr `FEES_PAYABLE:<beneficiary>` F. VAT is a separate posting line.
 - The fee run reconciles: claims = cancellations = payments.
+- An adviser fee payable is released only through the **FAIS licence gate**. A lapsed or debarred FSP's fee stays payable and becomes a break.
 
 ### Regular instructions
 

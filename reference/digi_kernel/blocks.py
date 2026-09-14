@@ -9,7 +9,7 @@ The fund always deals at the current price. The historical price is honoured by 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Callable, Iterable, Optional
 
@@ -30,6 +30,9 @@ MANCO_ERROR = "MANCO_ERROR_ACCOUNT"
 # Obligations the kernel's own gates serve. Tags land in journal evidence as "obligation:<id>".
 FICA_CDD = "FICA-CDD"
 CISCA_FORWARD_PRICING = "CISCA-FORWARD-PRICING"
+FAIS_LICENCE = "FAIS-ADVISER-LICENCE"
+SWITCH_CLEARING = "SWITCH_CLEARING"
+ROUNDING = "ROUNDING"
 
 
 def bank(bank_account: str) -> str:
@@ -67,6 +70,18 @@ def in_transit(fund: str) -> str:
 
 def fees_payable(beneficiary: str) -> str:
     return f"FEES_PAYABLE:{beneficiary}"
+
+
+def fees_due_from_fund(fund: str) -> str:
+    return f"FEES_DUE_FROM_FUND:{fund}"
+
+
+def distributions_payable(fund: str) -> str:
+    return f"DISTRIBUTIONS_PAYABLE:{fund}"
+
+
+def distributions_due_from_fund(fund: str) -> str:
+    return f"DISTRIBUTIONS_DUE_FROM_FUND:{fund}"
 
 
 def to_units(amount: Decimal, cpu: Decimal) -> Decimal:
@@ -155,11 +170,63 @@ class BulkInstruction:
 class Payable:
     id: str
     fund: str
-    account: str
+    account: str  # the beneficiary: an investor account, or an adviser for a fee
     amount: Decimal
     deal_id: str
+    ledger_account: str  # the payable control account this payment draws from
+    kind: str = "redemption"  # redemption, distribution, fee
     status: str = "open"  # open, in_transit, paid
     holds: set = field(default_factory=set)  # a held payable cannot be paid, e.g. "tax_directive"
+
+
+@dataclass
+class SwitchInstruction:
+    id: str
+    account: str
+    from_class: str
+    to_class: str
+    from_fund: str
+    to_fund: str
+    units: Decimal
+    received_at: datetime
+    dealing_date: date
+    status: str = "received"
+
+
+@dataclass(frozen=True)
+class TransferRequest:
+    from_account: str
+    to_account: str
+    class_id: str
+    units: Decimal
+    reason: str
+
+
+@dataclass
+class Entitlement:
+    account: str
+    units: Decimal
+    gross: Decimal
+    tax: Decimal
+    net: Decimal
+    option: str = "reinvest"  # reinvest or payout
+
+
+@dataclass
+class Distribution:
+    id: str
+    class_id: str
+    fund: str
+    cpu: Decimal
+    record_date: date
+    pay_date: date
+    tax_rate: Decimal
+    signed_by: tuple[str, ...]
+    status: str = "declared"  # declared, allocated, settled
+    declared_total: Decimal = ZERO
+    rounding: Decimal = ZERO
+    entitlements: dict = field(default_factory=dict)
+    journal_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -216,6 +283,9 @@ class Kernel:
         self.instruments: dict[str, str] = {}  # class id -> "own" | "external"
         self.bulks: dict[str, BulkInstruction] = {}
         self.guards: dict[str, list[tuple[str, Guard]]] = {}  # command -> [(rule name, guard)]
+        self.switches: dict[str, SwitchInstruction] = {}
+        self.distributions: dict[str, Distribution] = {}
+        self.adviser_status: dict[str, str] = {}  # adviser -> licensed | lapsed | debarred
         self._seq = 0
 
     # ------------------------------------------------------------------ helpers
@@ -304,6 +374,19 @@ class Kernel:
         if status not in ("verified", "expired", "pending"):
             raise BlockError(f"unknown KYC status {status!r}")
         self.kyc_status[account] = status
+
+    def set_adviser_status(self, *, adviser: str, status: str, actor: str, at: datetime) -> None:
+        """FSP licence status from the FSCA register. A kernel flag with controlled transitions."""
+        if status not in ("licensed", "lapsed", "debarred"):
+            raise BlockError(f"unknown adviser status {status!r}")
+        self.adviser_status[adviser] = status
+
+    def _require_adviser_licensed(self, adviser: str) -> str:
+        """The FAIS gate. No adviser fee is released to a lapsed or debarred FSP."""
+        status = self.adviser_status.get(adviser, "unknown")
+        if status != "licensed":
+            raise ControlError(f"Blocked by {FAIS_LICENCE}: adviser {adviser} is {status}; fee release refused")
+        return f"obligation:{FAIS_LICENCE}"
 
     def _require_kyc(self, account: str, action: str) -> str:
         """The FICA-CDD gate. Blocks dealing and payment for an account that is not verified."""
@@ -642,7 +725,8 @@ class Kernel:
             units=ins.units, investor_amount=gross, fund_amount=gross, fee=ZERO, price=price,
             effective_date=ins.dealing_date, journal_id=journal.id,
         )
-        payable = Payable(id=self._next_id("P"), fund=ins.fund, account=ins.account, amount=net, deal_id=deal.id, holds=set(holds))
+        payable = Payable(id=self._next_id("P"), fund=ins.fund, account=ins.account, amount=net, deal_id=deal.id,
+                          ledger_account=redemptions_payable(ins.fund), holds=set(holds))
         self.payables[payable.id] = payable
         return deal, payable
 
@@ -664,7 +748,7 @@ class Kernel:
             payable.amount -= tax
             journal = self._journal(
                 effective_date=at.date(), at=at, actor=actor, command="ReleaseHold", reason=f"{hold}:{reference}",
-                postings=[dr(redemptions_payable(payable.fund), "money", ZAR, tax), cr(TAX_WITHHELD, "money", ZAR, tax)],
+                postings=[dr(payable.ledger_account, "money", ZAR, tax), cr(TAX_WITHHELD, "money", ZAR, tax)],
                 evidence=[f"payable:{payable.id}", f"{hold}:{reference}"] + ([f"obligation:{obligation}"] if obligation else []),
             )
         payable.holds.discard(hold)
@@ -693,13 +777,16 @@ class Kernel:
         if payable.holds:
             raise ControlError(f"payable {payable.id} is held: {sorted(payable.holds)}; release the hold first")
         approvals = require_approvals(maker, approvals, minimum=1)
-        kyc_tag = self._require_kyc(payable.account, "payment")
+        if payable.kind == "fee":
+            gate_tag = self._require_adviser_licensed(payable.account)
+        else:
+            gate_tag = self._require_kyc(payable.account, "payment")
         rule_tags = self._pack_guards("InstructPayment", payable)
         payable.status = "in_transit"
         return self._journal(
             effective_date=at.date(), at=at, actor=maker, command="InstructPayment",
-            postings=[dr(redemptions_payable(payable.fund), "money", ZAR, payable.amount), cr(in_transit(payable.fund), "money", ZAR, payable.amount)],
-            evidence=[f"payable:{payable.id}", kyc_tag] + rule_tags + [f"approval:{a.role}:{a.actor}" for a in approvals],
+            postings=[dr(payable.ledger_account, "money", ZAR, payable.amount), cr(in_transit(payable.fund), "money", ZAR, payable.amount)],
+            evidence=[f"payable:{payable.id}", gate_tag] + rule_tags + [f"approval:{a.role}:{a.actor}" for a in approvals],
         )
 
     def confirm_payment(self, *, payable_id: str, bank_account: str, at: datetime, actor: str) -> Journal:
@@ -721,9 +808,265 @@ class Kernel:
         payable.status = "open"
         return self._journal(
             effective_date=at.date(), at=at, actor=actor, command="ReturnPayment", reason=reason,
-            postings=[dr(in_transit(payable.fund), "money", ZAR, payable.amount), cr(redemptions_payable(payable.fund), "money", ZAR, payable.amount)],
+            postings=[dr(in_transit(payable.fund), "money", ZAR, payable.amount), cr(payable.ledger_account, "money", ZAR, payable.amount)],
             evidence=[f"payable:{payable.id}"],
         )
+
+    # ------------------------------------------------------------------- switch
+
+    def receive_switch(
+        self, *, id: str, account: str, from_class: str, to_class: str, from_fund: str, to_fund: str,
+        units: Decimal, received_at: datetime, dealing_date: date,
+    ) -> SwitchInstruction:
+        if id in self.switches:
+            raise BlockError(f"duplicate switch {id}")
+        if dealing_date < received_at.date():
+            raise BlockError("a dealing date cannot precede receipt; forward pricing")
+        if from_class == to_class:
+            raise BlockError("a switch needs two different classes")
+        sw = SwitchInstruction(id, account, from_class, to_class, from_fund, to_fund, Decimal(units), received_at, dealing_date)
+        self.switches[id] = sw
+        return sw
+
+    def price_switch(self, *, instruction_id: str, at: datetime, actor: str) -> tuple[Deal, Deal]:
+        """A redemption leg and an investment leg in one journal. Both legs or neither."""
+        sw = self.switches[instruction_id]
+        if sw.status != "received":
+            raise BlockError(f"switch {sw.id} is already {sw.status}")
+        if self.issuer_of(sw.from_class) == "external" or self.issuer_of(sw.to_class) == "external":
+            raise BlockError("a leg on an external instrument goes through bulk dealing")
+        if self.day_close.is_closed(sw.dealing_date):
+            raise ControlError(f"{sw.dealing_date} is closed (I11)")
+        available = self.register.available_units(sw.account, sw.from_class)
+        if sw.units > available:
+            raise BlockError(f"only {available} units available, {sw.units} requested")
+        kyc_tag = self._require_kyc(sw.account, "dealing")
+        rule_tags = self._pack_guards("Switch", sw)
+        price_out = self.prices.official_at(sw.from_class, sw.dealing_date, knowledge_as_at=at)
+        price_in = self.prices.official_at(sw.to_class, sw.dealing_date, knowledge_as_at=at)
+        if price_out is None or price_in is None:
+            raise BlockError("both legs need an official price for the dealing date; nothing posts until they exist (I3)")
+        amount = cpu_to_amount(sw.units, price_out.cpu)
+        units_in = to_units(amount, price_in.cpu)
+        journal = self._journal(
+            effective_date=sw.dealing_date, at=at, actor=actor, command="PriceSwitch",
+            postings=[
+                dr(holding_account(sw.account, sw.from_class), "units", sw.from_class, sw.units),
+                cr(in_issue_account(sw.from_class), "units", sw.from_class, sw.units),
+                dr(in_issue_account(sw.to_class), "units", sw.to_class, units_in),
+                cr(holding_account(sw.account, sw.to_class), "units", sw.to_class, units_in),
+                dr(due_from_fund(sw.from_fund), "money", ZAR, amount),
+                cr(SWITCH_CLEARING, "money", ZAR, amount),
+                dr(SWITCH_CLEARING, "money", ZAR, amount),
+                cr(payable_to_fund(sw.to_fund), "money", ZAR, amount),
+            ],
+            evidence=[f"switch:{sw.id}", price_out.ref, price_in.ref, kyc_tag, f"obligation:{CISCA_FORWARD_PRICING}"] + rule_tags,
+        )
+        self.register.check(sw.from_class)
+        self.register.check(sw.to_class)
+        sw.status = "priced"
+        out = self._new_deal(
+            instruction_id=sw.id, account=sw.account, class_id=sw.from_class, fund=sw.from_fund, kind="switch_out",
+            units=sw.units, investor_amount=amount, fund_amount=amount, fee=ZERO, price=price_out,
+            effective_date=sw.dealing_date, journal_id=journal.id,
+        )
+        into = self._new_deal(
+            instruction_id=sw.id, account=sw.account, class_id=sw.to_class, fund=sw.to_fund, kind="switch_in",
+            units=units_in, investor_amount=amount, fund_amount=amount, fee=ZERO, price=price_in,
+            effective_date=sw.dealing_date, journal_id=journal.id,
+        )
+        return out, into
+
+    # ----------------------------------------------------------------- transfer
+
+    def transfer_units(
+        self, *, from_account: str, to_account: str, class_id: str, units: Decimal, at: datetime, actor: str,
+        reason: str, evidence: Iterable[str] = (),
+    ) -> Journal:
+        """Units move between accounts without a price and without money. Tax lots travel with them."""
+        units = Decimal(units)
+        if units <= 0:
+            raise BlockError("a transfer needs positive units")
+        if not reason:
+            raise BlockError("a transfer needs a reason: estate, re-registration, section 14, retirement")
+        available = self.register.available_units(from_account, class_id)
+        if units > available:
+            raise BlockError(f"only {available} units available, {units} requested")
+        kyc_tag = self._require_kyc(to_account, "receiving a transfer")
+        request = TransferRequest(from_account, to_account, class_id, units, reason)
+        rule_tags = self._pack_guards("Transfer", request)
+        journal = self._journal(
+            effective_date=at.date(), at=at, actor=actor, command="TransferUnits", reason=reason,
+            postings=[
+                dr(holding_account(from_account, class_id), "units", class_id, units),
+                cr(holding_account(to_account, class_id), "units", class_id, units),
+            ],
+            evidence=list(evidence) + [kyc_tag] + rule_tags,
+        )
+        self.register.check(class_id)
+        return journal
+
+    # ------------------------------------------------------------- distribution
+
+    def declare_distribution(
+        self, *, class_id: str, fund: str, cpu: Decimal, record_date: date, pay_date: date, at: datetime,
+        signed_by: Iterable[str], tax_rate: Decimal = ZERO,
+    ) -> Distribution:
+        """Cents per unit for a class. Two signers, like a price."""
+        signed_by = tuple(signed_by)
+        if len(set(signed_by)) < 2:
+            raise ControlError("a distribution declaration needs two distinct signers")
+        cpu = Decimal(cpu)
+        if cpu <= 0:
+            raise BlockError("cents per unit must be positive")
+        if pay_date < record_date:
+            raise BlockError("the pay date cannot precede the record date")
+        dist = Distribution(self._next_id("DIST"), class_id, fund, cpu, record_date, pay_date, Decimal(tax_rate), signed_by)
+        self.distributions[dist.id] = dist
+        return dist
+
+    def allocate_distribution(
+        self, *, distribution_id: str, at: datetime, actor: str,
+        option_for: Callable[[str], str] = lambda account: "reinvest",
+        exempt: Callable[[str], bool] = lambda account: False,
+    ) -> Journal:
+        """Entitlements from record-date holdings, derived as at that date. Rounding to its own account."""
+        dist = self.distributions[distribution_id]
+        if dist.status != "declared":
+            raise BlockError(f"distribution {dist.id} is already {dist.status}")
+        holders = self.register.holders(dist.class_id, effective_as_at=dist.record_date, knowledge_as_at=at)
+        if not holders:
+            raise BlockError(f"no holders of {dist.class_id} at {dist.record_date}")
+        in_issue = self.register.control_total(dist.class_id, effective_as_at=dist.record_date, knowledge_as_at=at)
+        dist.declared_total = cpu_to_amount(in_issue, dist.cpu)
+        total_gross = total_tax = total_net = ZERO
+        for account, units in sorted(holders.items()):
+            gross = cpu_to_amount(units, dist.cpu)
+            tax = ZERO if exempt(account) else (gross * dist.tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            net = gross - tax
+            option = option_for(account)
+            if option not in ("reinvest", "payout"):
+                raise BlockError(f"unknown distribution option {option!r} for {account}")
+            dist.entitlements[account] = Entitlement(account, units, gross, tax, net, option)
+            total_gross += gross
+            total_tax += tax
+            total_net += net
+        dist.rounding = dist.declared_total - total_gross
+        postings = [
+            dr(distributions_due_from_fund(dist.fund), "money", ZAR, dist.declared_total),
+            cr(distributions_payable(dist.fund), "money", ZAR, total_net),
+        ]
+        if total_tax > 0:
+            postings.append(cr(TAX_WITHHELD, "money", ZAR, total_tax))
+        if dist.rounding > 0:
+            postings.append(cr(ROUNDING, "money", ZAR, dist.rounding))
+        elif dist.rounding < 0:
+            postings.append(dr(ROUNDING, "money", ZAR, -dist.rounding))
+        journal = self._journal(
+            effective_date=dist.record_date, at=at, actor=actor, command="AllocateDistribution",
+            postings=postings, evidence=[f"distribution:{dist.id}"] + [f"signer:{s}" for s in dist.signed_by],
+        )
+        dist.status = "allocated"
+        dist.journal_id = journal.id
+        return journal
+
+    def settle_distribution(self, *, distribution_id: str, at: datetime, actor: str) -> tuple[list[Deal], list[Payable]]:
+        """Reinvest at the pay-date price, or create payables. One journal for every reinvestment."""
+        dist = self.distributions[distribution_id]
+        if dist.status != "allocated":
+            raise BlockError(f"distribution {dist.id} must be allocated first")
+        reinvesting = [e for e in dist.entitlements.values() if e.option == "reinvest" and e.net > 0]
+        paying = [e for e in dist.entitlements.values() if e.option == "payout" and e.net > 0]
+        deals: list[Deal] = []
+        payables: list[Payable] = []
+        if reinvesting:
+            price = self.prices.official_at(dist.class_id, dist.pay_date, knowledge_as_at=at)
+            if price is None:
+                raise BlockError(f"no official price for {dist.class_id} on the pay date {dist.pay_date} (I3)")
+            postings = []
+            allocations = []
+            for e in reinvesting:
+                units = to_units(e.net, price.cpu)
+                allocations.append((e, units))
+                postings += [
+                    dr(distributions_payable(dist.fund), "money", ZAR, e.net),
+                    cr(payable_to_fund(dist.fund), "money", ZAR, e.net),
+                    dr(in_issue_account(dist.class_id), "units", dist.class_id, units),
+                    cr(holding_account(e.account, dist.class_id), "units", dist.class_id, units),
+                ]
+            journal = self._journal(
+                effective_date=dist.pay_date, at=at, actor=actor, command="ReinvestDistribution",
+                postings=postings, evidence=[f"distribution:{dist.id}", price.ref],
+            )
+            self.register.check(dist.class_id)
+            for e, units in allocations:
+                deals.append(self._new_deal(
+                    instruction_id=dist.id, account=e.account, class_id=dist.class_id, fund=dist.fund, kind="reinvest",
+                    units=units, investor_amount=e.net, fund_amount=e.net, fee=ZERO, price=price,
+                    effective_date=dist.pay_date, journal_id=journal.id,
+                ))
+        for e in paying:
+            payable = Payable(id=self._next_id("P"), fund=dist.fund, account=e.account, amount=e.net, deal_id=dist.id,
+                              ledger_account=distributions_payable(dist.fund), kind="distribution")
+            self.payables[payable.id] = payable
+            payables.append(payable)
+        dist.status = "settled"
+        return deals, payables
+
+    # --------------------------------------------------------------------- fees
+
+    def accrue_fee(
+        self, *, account: str, class_id: str, rate_pa: Decimal, start: date, end: date, knowledge_as_at: Optional[datetime] = None,
+    ) -> Decimal:
+        """A fee to date, computed from daily units and the last known price. Never stored until collected."""
+        total = ZERO
+        day = start
+        while day <= end:
+            units = self.register.units(account, class_id, effective_as_at=day, knowledge_as_at=knowledge_as_at)
+            price = self.prices.select(class_id, effective_as_at=day, knowledge_as_at=knowledge_as_at)
+            if price is not None and units > 0:
+                total += units * price.cpu / Decimal(100) * Decimal(rate_pa) / Decimal(365)
+            day += timedelta(days=1)
+        return total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    def collect_fee(
+        self, *, account: str, class_id: str, fund: str, amount: Decimal, beneficiary: str, dealing_date: date,
+        at: datetime, actor: str, period: str,
+    ) -> tuple[Deal, Payable]:
+        """Execute a fee claim as a unit cancellation. The beneficiary gets a payable, paid through the FAIS gate."""
+        amount = Decimal(amount)
+        if amount <= 0:
+            raise BlockError("a fee claim must be positive")
+        if self.day_close.is_closed(dealing_date):
+            raise ControlError(f"{dealing_date} is closed (I11)")
+        price = self.prices.official_at(class_id, dealing_date, knowledge_as_at=at)
+        if price is None:
+            raise BlockError(f"no official price for {class_id} on {dealing_date} (I3)")
+        units = to_units(amount, price.cpu)
+        available = self.register.available_units(account, class_id)
+        if units > available:
+            raise BlockError(f"only {available} units available for a fee of {units}")
+        rule_tags = self._pack_guards("CollectFee", (account, class_id, amount, beneficiary))
+        journal = self._journal(
+            effective_date=dealing_date, at=at, actor=actor, command="CollectFee", reason=period,
+            postings=[
+                dr(holding_account(account, class_id), "units", class_id, units),
+                cr(in_issue_account(class_id), "units", class_id, units),
+                dr(fees_due_from_fund(fund), "money", ZAR, amount),
+                cr(fees_payable(beneficiary), "money", ZAR, amount),
+            ],
+            evidence=[f"fee:{beneficiary}:{period}", price.ref] + rule_tags,
+        )
+        self.register.check(class_id)
+        deal = self._new_deal(
+            instruction_id=f"fee:{beneficiary}:{period}", account=account, class_id=class_id, fund=fund, kind="fee",
+            units=units, investor_amount=amount, fund_amount=amount, fee=amount, price=price,
+            effective_date=dealing_date, journal_id=journal.id,
+        )
+        payable = Payable(id=self._next_id("P"), fund=fund, account=beneficiary, amount=amount, deal_id=deal.id,
+                          ledger_account=fees_payable(beneficiary), kind="fee")
+        self.payables[payable.id] = payable
+        return deal, payable
 
     # --------------------------------------------------------------- backdating
 
@@ -843,7 +1186,8 @@ class Kernel:
             units=ins.units, investor_amount=investor_gross, fund_amount=fund_amount, fee=ZERO, price=historical,
             effective_date=historical_date, journal_id=journal.id,
         )
-        payable = Payable(id=self._next_id("P"), fund=ins.fund, account=ins.account, amount=net, deal_id=deal.id)
+        payable = Payable(id=self._next_id("P"), fund=ins.fund, account=ins.account, amount=net, deal_id=deal.id,
+                          ledger_account=redemptions_payable(ins.fund))
         self.payables[payable.id] = payable
         record = BackdatingRecord(deal.id, "redeem", reason, owner, delta, historical, current, tuple(a.actor for a in approvals), evidence)
         self.backdating_register.append(record)
@@ -938,7 +1282,8 @@ class Kernel:
                     diff = correct_amount - deal.investor_amount  # positive: the investor was underpaid
                     if diff > 0:
                         postings = [dr(MANCO_ERROR, "money", ZAR, diff), cr(redemptions_payable(deal.fund), "money", ZAR, diff)]
-                        payable = Payable(id=self._next_id("P"), fund=deal.fund, account=deal.account, amount=diff, deal_id=deal.id)
+                        payable = Payable(id=self._next_id("P"), fund=deal.fund, account=deal.account, amount=diff, deal_id=deal.id,
+                                          ledger_account=redemptions_payable(deal.fund))
                         self.payables[payable.id] = payable
                     elif diff < 0:
                         postings = [dr(MANCO_ERROR, "money", ZAR, -diff), cr(payable_to_fund(deal.fund), "money", ZAR, -diff)]
@@ -962,6 +1307,9 @@ class Kernel:
         for ins in self.instructions.values():
             if ins.dealing_date == dealing_date and ins.status in ("matched", "locked", "in_bulk"):
                 problems.append(f"instruction {ins.id} is unpriced")
+        for sw in self.switches.values():
+            if sw.dealing_date == dealing_date and sw.status == "received":
+                problems.append(f"switch {sw.id} is unpriced")
         for line in self.bank_lines.values():
             if not line.matched and line.at.date() <= dealing_date:
                 problems.append(f"bank line {line.id} is unallocated cash")

@@ -66,6 +66,26 @@ class Register:
         """Issuer-side quantity: units in issue for an own class, nominee bulk for an external one."""
         return self.units_in_issue(class_id, **as_at) + self.nominee_bulk(class_id, **as_at)
 
+    def holders(self, class_id: str, **as_at) -> dict[str, Decimal]:
+        """Units per holder as at a date, locked units included. Derived, never snapshotted."""
+        suffix = f":{class_id}"
+        totals: dict[str, Decimal] = {}
+        for _, p in self.ledger.postings(**as_at):
+            if p.dimension != "units" or p.unit != class_id:
+                continue
+            if p.account.startswith("HOLDING:"):
+                key = p.account[len("HOLDING:"):-len(suffix)]
+            elif p.account.startswith("HOLDING_LOCKED:"):
+                key = p.account[len("HOLDING_LOCKED:"):-len(suffix)]
+            elif p.account.startswith("BOX:"):
+                key = "BOX"
+            elif p.account.startswith("ROUNDING_UNITS:"):
+                key = "ROUNDING_UNITS"
+            else:
+                continue
+            totals[key] = totals.get(key, ZERO) - p.amount
+        return {k: v for k, v in totals.items() if v != ZERO}
+
     def holders_total(self, class_id: str, **as_at) -> Decimal:
         total = ZERO
         for _, p in self.ledger.postings(**as_at):
