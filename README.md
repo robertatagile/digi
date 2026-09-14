@@ -17,6 +17,7 @@ Design repository for a new South African **LISP and unit trust (CIS) administra
 | [docs/06-valuation.md](docs/06-valuation.md) | Calculate, don't store. Near real-time values. |
 | [docs/09-tenant-packs-ai-generated.md](docs/09-tenant-packs-ai-generated.md) | How a manco's implementation is generated, proven and released. |
 | [docs/13-legislation-as-a-controlled-layer.md](docs/13-legislation-as-a-controlled-layer.md) | Legislation (FSR Act, COFI, FAIS, CISCA, FICA …) as a controlled, manco-managed layer bound to controls. |
+| [docs/14-scale-and-performance.md](docs/14-scale-and-performance.md) | Volume: targets, hot-path costs, the rules that keep real-time valuation cheap, load tests. |
 
 Full index: [docs/README.md](docs/README.md)
 
@@ -27,6 +28,7 @@ It exists to make the invariants concrete. It is not production code.
 
 ```bash
 python3 -m unittest discover -s reference/tests -v
+python3 reference/scale/bench.py        # the hot paths at a million holdings
 ```
 
 ## Example pack

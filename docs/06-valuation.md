@@ -68,7 +68,7 @@ The honesty rule: **no total without its price basis.**
 
 ## Near real time
 
-Nothing runs to "revalue". Values are recomputed on read.
+Nothing runs to "revalue". Values are recomputed on read. Doc 14 shows why this is faster at volume, not slower: a price is one write, group values come from aggregated units, and screens receive price versions rather than values.
 
 - A `PricePublished` event for a class invalidates cache keys that include that class.
 - Subscribers (screens, APIs) receive the new value on the next read or by push.

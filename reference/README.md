@@ -10,6 +10,8 @@ python3 -m unittest discover -s reference/tests -v
 
 ## Modules
 
+The scale data layout and its benchmark live in [`scale/`](scale/README.md).
+
 | Module | Covers |
 |--------|--------|
 | `digi_kernel/ledger.py` | I1 balanced in money and units. I5 immutable, reversal only. I12 actor and pack version. Bitemporal balances. |

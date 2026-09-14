@@ -4,12 +4,12 @@
 
 | Phase | Builds | Exit criteria |
 |-------|--------|---------------|
-| **0. Kernel core** | Ledger (bitemporal, money and units), register with own and external issuers, prices with versions and confirmations, valuation, investment and redemption direct and in bulk, allocation, cash matching, maker-checker, day close | Property tests pass: journals balance, register reconciles for both issuers, values equal pure recompute. Golden scenarios green. |
+| **0. Kernel core** | Ledger (bitemporal, money and units), register with own and external issuers, prices with versions and confirmations, valuation, investment and redemption direct and in bulk, allocation, cash matching, maker-checker, day close. The scale data layout from doc 14: snapshots plus deltas, group aggregates, price index | Property tests pass: journals balance, register reconciles for both issuers, values equal pure recompute. Golden scenarios green. Load tests at ten percent of the doc 14 targets pass. |
 | **1. Full block set** | Switch, transfer, distribution, fees and fee runs across N instruments, regular instructions, backdating and reversals, price corrections, corporate actions, payments, reconciliations including nominee | Every block has postings, reversal and control accounts under test. Break register live. The reference model already carries switch, transfer, distribution and fees as compositions of the phase 0 primitives. |
 | **2. Packs and legislation** | Pack DSL, validator, sandbox runtime, simulator, generation pipeline, review workspace, release process, legislation library and obligation register | One fictional pack generated from documents. Shadow run tooling replays a synthetic history. Coverage gate live. |
 | **3. First tenant pilot** | Pack for one real tenant, manco or LISP. Adapters: bank, fund accounting or FinSwitch, SARS | Shadow run parity with legacy for one quarter. Trustee and auditor walkthrough done. Both issuer shapes exercised in the simulator regardless of the pilot's shape. |
 | **4. Products and models** | Product wrappers as pack rules (TFSA, RA, preservation, living annuity, endowment, two-pot), model portfolios and rebalancing, tax directives | Second tenant shadow run. IT3 outputs match. |
-| **5. Migration and scale** | Legacy migration tooling, regulatory packs, performance work, second and third tenants | Onboarding a tenant in weeks, repeatably. |
+| **5. Full scale** | Legacy migration tooling, regulatory packs, load tests at one hundred percent of the doc 14 targets, second and third tenants | Onboarding a tenant in weeks, repeatably. Every doc 14 assertion green at full scale. |
 
 ## Pilot approach
 
@@ -26,7 +26,7 @@
 |------|------------|
 | The model invents a rule | Provenance required. Shadow run. Human review. Kernel invariants stop value errors regardless |
 | A regulator or trustee distrusts generated behaviour | The pack is readable and cited. The kernel is fixed and audited once. Early trustee walkthroughs |
-| Performance of calculate-on-read at scale | Snapshots and projections as verifiable caches. Values are multiplications |
+| Performance of calculate-on-read at scale | Doc 14: snapshots plus deltas, aggregates in units, one write per price, partitions by account and class. Load tests from phase 0 |
 | Mancos want their old flexibility | Flexibility lives in the pack and is regenerated in days. Controls are the selling point |
 | Legacy data is wrong | The shadow run finds it. Migration records known differences with sign-off |
 | Fund accounting scope creep | Pricing point contract first. Fund accounting module later on the same principles |

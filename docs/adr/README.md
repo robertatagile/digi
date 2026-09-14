@@ -13,3 +13,4 @@ Short records of the decisions that shape the platform. One file each.
 | [007](ADR-007-controls-tighten-only.md) | Packs can tighten a kernel control. Never loosen one. |
 | [008](ADR-008-provenance-on-every-rule.md) | Every generated rule cites its source. |
 | [009](ADR-009-legislation-as-a-controlled-object.md) | Legislation is a controlled, versioned object bound to kernel controls and pack rules. |
+| [010](ADR-010-aggregate-quantities-push-prices.md) | Aggregate quantities incrementally. Push prices, not values. Snapshots plus deltas. |

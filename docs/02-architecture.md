@@ -119,6 +119,7 @@ Time zone is **Africa/Johannesburg**. Calendars come from the pack: JSE, bank, f
 - **Pack service**: generation, validation, simulation, review, release.
 - **Fixed-point decimals** everywhere. No floating point in money or units.
 - **Data residency** in South Africa. Tenant isolation at the data layer.
+- **Built for volume.** Doc 14 sets the targets and the data layout: snapshots plus deltas, aggregates in units, one write per price, partitions by account and by class.
 
 ## What is deliberately not a setting
 

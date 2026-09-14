@@ -17,6 +17,7 @@ Read in order. Each document stands alone.
 | 11 | [Regulatory and integration](11-regulatory-and-integration.md) | SA regimes mapped to platform parts. Integration map. |
 | 12 | [Roadmap](12-roadmap.md) | Phases, pilot approach, risks, open decisions. |
 | 13 | [Legislation as a controlled layer](13-legislation-as-a-controlled-layer.md) | FSR Act, COFI, FAIS, CISCA, FICA and more as versioned obligations, bound to controls, managed by the manco. |
+| 14 | [Scale and performance](14-scale-and-performance.md) | Design targets, hot-path costs, the rules that keep calculate-don't-store fast, data layout, consistency, peaks, load tests. |
 
 **Decisions:** [adr/](adr/) holds the architecture decision records.
 
